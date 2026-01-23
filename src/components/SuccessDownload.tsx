@@ -34,11 +34,11 @@ export function SuccessDownload({
         </motion.div>
 
         <h1 className="font-serif text-4xl md:text-5xl text-foreground mb-3">
-          Your Memory is Ready
+          Votre Souvenir est Prêt
         </h1>
         
         <p className="text-muted-foreground text-lg mb-8">
-          Thank you for preserving this precious moment.
+          Merci de préserver ce précieux moment.
         </p>
 
         {/* Preview */}
@@ -72,7 +72,7 @@ export function SuccessDownload({
             className="w-full"
           >
             <FileImage className="w-5 h-5" />
-            Download HD PNG
+            Télécharger PNG HD
           </Button>
 
           <Button
@@ -82,7 +82,7 @@ export function SuccessDownload({
             className="w-full"
           >
             <FileText className="w-5 h-5" />
-            Download Print PDF
+            Télécharger PDF Impression
           </Button>
         </motion.div>
 
@@ -99,7 +99,7 @@ export function SuccessDownload({
             className="text-muted-foreground hover:text-foreground"
           >
             <Heart className="w-4 h-4" />
-            Make this a framed print
+            Transformez-le en cadre
           </Button>
         </motion.div>
       </motion.div>

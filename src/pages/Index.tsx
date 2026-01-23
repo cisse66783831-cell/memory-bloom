@@ -42,8 +42,8 @@ function IndexContent() {
     setIsPaymentLoading(false);
     
     toast({
-      title: "Payment successful!",
-      description: "Your restored photo is ready for download.",
+      title: "Paiement réussi !",
+      description: "Votre photo restaurée est prête à télécharger.",
     });
   };
 
@@ -52,8 +52,8 @@ function IndexContent() {
       downloadFile("png");
     }
     toast({
-      title: "Download started",
-      description: "Your HD PNG is downloading...",
+      title: "Téléchargement démarré",
+      description: "Votre PNG HD est en cours de téléchargement...",
     });
   };
 
@@ -62,8 +62,8 @@ function IndexContent() {
       downloadFile("pdf");
     }
     toast({
-      title: "Download started",
-      description: "Your print-ready PDF is downloading...",
+      title: "Téléchargement démarré",
+      description: "Votre PDF prêt à imprimer est en cours de téléchargement...",
     });
   };
 
@@ -73,15 +73,15 @@ function IndexContent() {
 
   const handleSelectFrameSize = (size: string, price: number) => {
     toast({
-      title: "Great choice!",
-      description: `${size} canvas for ${price.toLocaleString()} F added to cart.`,
+      title: "Excellent choix !",
+      description: `Toile ${size} pour ${price.toLocaleString()} F ajoutée au panier.`,
     });
   };
 
   const handleSkipUpsell = () => {
     toast({
-      title: "Thank you!",
-      description: "Enjoy your restored memory.",
+      title: "Merci !",
+      description: "Profitez de votre souvenir restauré.",
     });
     reset();
   };
@@ -89,7 +89,7 @@ function IndexContent() {
   // Show error toast if there's an error
   if (error) {
     toast({
-      title: "Something went wrong",
+      title: "Une erreur s'est produite",
       description: error,
       variant: "destructive",
     });
@@ -140,10 +140,10 @@ function IndexContent() {
               <div className="space-y-8">
                 <div className="text-center">
                   <h1 className="font-serif text-3xl md:text-4xl text-foreground mb-2">
-                    See the Transformation
+                    Voyez la Transformation
                   </h1>
                   <p className="text-muted-foreground">
-                    Your memory, restored with care.
+                    Votre souvenir, restauré avec soin.
                   </p>
                 </div>
                 
@@ -198,7 +198,7 @@ function IndexContent() {
       {/* Footer */}
       <footer className="container py-8 mt-auto">
         <div className="text-center text-sm text-muted-foreground">
-          <p>© 2026 MemoryRestore. Preserving your precious moments.</p>
+          <p>© 2026 MemoryRestore. Préservons vos précieux souvenirs.</p>
         </div>
       </footer>
     </div>

@@ -31,11 +31,11 @@ export function ProcessingLoader({ progress = 0 }: ProcessingLoaderProps) {
         </motion.div>
 
         <h2 className="font-serif text-3xl md:text-4xl text-foreground mb-4">
-          Restoring Your Memory...
+          Restauration de Votre Souvenir...
         </h2>
         
         <p className="text-muted-foreground text-lg mb-8">
-          We're carefully bringing back every detail.
+          Nous restaurons chaque détail avec soin.
         </p>
 
         {/* Progress bar */}
@@ -55,10 +55,10 @@ export function ProcessingLoader({ progress = 0 }: ProcessingLoaderProps) {
         </div>
 
         <p className="text-sm text-muted-foreground">
-          {progress < 30 && "Analyzing your photo..."}
-          {progress >= 30 && progress < 60 && "Enhancing details..."}
-          {progress >= 60 && progress < 90 && "Restoring colors..."}
-          {progress >= 90 && "Almost there..."}
+          {progress < 30 && "Analyse de votre photo..."}
+          {progress >= 30 && progress < 60 && "Amélioration des détails..."}
+          {progress >= 60 && progress < 90 && "Restauration des couleurs..."}
+          {progress >= 90 && "Presque terminé..."}
         </p>
 
         <motion.div
@@ -68,7 +68,7 @@ export function ProcessingLoader({ progress = 0 }: ProcessingLoaderProps) {
           className="mt-12 p-6 bg-card rounded-xl shadow-soft"
         >
           <p className="text-sm text-muted-foreground italic">
-            "Every photograph is a story preserved in time."
+            « Chaque photo est une histoire préservée dans le temps. »
           </p>
         </motion.div>
       </motion.div>

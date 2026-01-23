@@ -9,9 +9,9 @@ interface PaymentSectionProps {
 
 export function PaymentSection({ onPayment, isLoading }: PaymentSectionProps) {
   const features = [
-    { icon: FileImage, text: "High-resolution PNG (no watermark)" },
-    { icon: FileText, text: "Print-ready PDF" },
-    { icon: Download, text: "Instant download after payment" },
+    { icon: FileImage, text: "PNG haute résolution (sans filigrane)" },
+    { icon: FileText, text: "PDF prêt à imprimer" },
+    { icon: Download, text: "Téléchargement instantané après paiement" },
   ];
 
   return (
@@ -25,11 +25,11 @@ export function PaymentSection({ onPayment, isLoading }: PaymentSectionProps) {
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 px-4 py-2 bg-accent/10 rounded-full text-accent mb-4">
             <Lock className="w-4 h-4" />
-            <span className="text-sm font-medium">Your memory is ready</span>
+            <span className="text-sm font-medium">Votre souvenir est prêt</span>
           </div>
           
           <h2 className="font-serif text-3xl md:text-4xl text-foreground mb-3">
-            Unlock the Full Version
+            Débloquez la Version Complète
           </h2>
           
           <div className="flex items-baseline justify-center gap-1">
@@ -71,16 +71,16 @@ export function PaymentSection({ onPayment, isLoading }: PaymentSectionProps) {
                 transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
                 className="w-5 h-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full"
               />
-              Processing...
+              Traitement en cours...
             </span>
           ) : (
-            "Unlock Now – 1000 F"
+            "Débloquer Maintenant – 1000 F"
           )}
         </Button>
 
         <div className="mt-6 flex items-center justify-center gap-2 text-sm text-muted-foreground">
           <Shield className="w-4 h-4" />
-          <span>Secure payment • Instant access</span>
+          <span>Paiement sécurisé • Accès instantané</span>
         </div>
       </div>
     </motion.div>
