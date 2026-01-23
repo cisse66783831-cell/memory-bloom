@@ -52,11 +52,11 @@ export function PhotoUploader({ onPhotoSelected }: PhotoUploaderProps) {
         className="text-center mb-8"
       >
         <h1 className="font-serif text-4xl md:text-5xl lg:text-6xl text-foreground mb-4 leading-tight">
-          Bring Your Memories<br />
-          <span className="text-gradient">Back to Life</span>
+          Redonnez Vie à<br />
+          <span className="text-gradient">Vos Souvenirs</span>
         </h1>
         <p className="text-muted-foreground text-lg md:text-xl max-w-md mx-auto">
-          Old, damaged or blurry photos accepted. We'll restore the magic.
+          Photos anciennes, abîmées ou floues acceptées. Nous restaurons la magie.
         </p>
       </motion.div>
 
@@ -102,7 +102,7 @@ export function PhotoUploader({ onPhotoSelected }: PhotoUploaderProps) {
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-foreground/60 to-transparent" />
                 <div className="absolute bottom-4 left-4 right-4 text-center">
-                  <p className="text-primary-foreground font-medium">Photo ready</p>
+                  <p className="text-primary-foreground font-medium">Photo prête</p>
                 </div>
               </motion.div>
             ) : (
@@ -126,14 +126,14 @@ export function PhotoUploader({ onPhotoSelected }: PhotoUploaderProps) {
                 </motion.div>
                 
                 <p className="text-foreground font-medium text-lg mb-2">
-                  Drop your photo here
+                  Déposez votre photo ici
                 </p>
                 <p className="text-muted-foreground text-sm mb-4">
-                  or click to browse
+                  ou cliquez pour parcourir
                 </p>
                 <div className="flex items-center gap-2 text-muted-foreground text-xs">
                   <Heart className="w-3 h-3" />
-                  <span>JPG or PNG accepted</span>
+                  <span>JPG ou PNG acceptés</span>
                 </div>
               </motion.div>
             )}
@@ -150,11 +150,11 @@ export function PhotoUploader({ onPhotoSelected }: PhotoUploaderProps) {
         <div className="flex items-center justify-center gap-6 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-success" />
-            <span>Private & Secure</span>
+            <span>Privé et Sécurisé</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-success" />
-            <span>Quick Processing</span>
+            <span>Traitement Rapide</span>
           </div>
         </div>
       </motion.div>

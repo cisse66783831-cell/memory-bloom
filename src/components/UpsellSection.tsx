@@ -25,10 +25,10 @@ export function UpsellSection({ restoredImageUrl, onSelectSize, onSkip }: Upsell
         {/* Header */}
         <div className="text-center mb-8">
           <h2 className="font-serif text-3xl md:text-4xl text-foreground mb-3">
-            Turn This Memory Into Art
+            Transformez Ce Souvenir en Œuvre d'Art
           </h2>
           <p className="text-muted-foreground text-lg">
-            Premium canvas prints, delivered to your door.
+            Impressions sur toile premium, livrées chez vous.
           </p>
         </div>
 
@@ -78,7 +78,7 @@ export function UpsellSection({ restoredImageUrl, onSelectSize, onSkip }: Upsell
               >
                 {size.popular && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-accent text-accent-foreground text-xs font-medium rounded-full">
-                    Most Popular
+                    Le Plus Populaire
                   </div>
                 )}
                 
@@ -94,11 +94,11 @@ export function UpsellSection({ restoredImageUrl, onSelectSize, onSkip }: Upsell
                 <div className="mt-4 space-y-2 text-sm text-muted-foreground">
                   <div className="flex items-center gap-2">
                     <Check className="w-4 h-4 text-success" />
-                    <span>Premium canvas</span>
+                    <span>Toile premium</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Check className="w-4 h-4 text-success" />
-                    <span>Ready to hang</span>
+                    <span>Prêt à accrocher</span>
                   </div>
                 </div>
               </button>
@@ -119,7 +119,7 @@ export function UpsellSection({ restoredImageUrl, onSelectSize, onSkip }: Upsell
             className="text-muted-foreground hover:text-foreground"
           >
             <X className="w-4 h-4" />
-            No thanks, I'm happy with my download
+            Non merci, je suis satisfait de mon téléchargement
           </Button>
         </motion.div>
       </motion.div>

@@ -43,7 +43,7 @@ export function BeforeAfterSlider({ beforeImage, afterImage }: BeforeAfterSlider
       <div className="text-center mb-6">
         <p className="text-muted-foreground text-sm flex items-center justify-center gap-2">
           <GripVertical className="w-4 h-4" />
-          Slide to see the difference
+          Glissez pour voir la différence
         </p>
       </div>
 
@@ -86,7 +86,7 @@ export function BeforeAfterSlider({ beforeImage, afterImage }: BeforeAfterSlider
         >
           <div className="w-full h-full flex items-center justify-center">
             <p className="text-foreground text-2xl font-serif rotate-[-30deg] select-none">
-              PREVIEW
+              APERÇU
             </p>
           </div>
         </div>
@@ -112,12 +112,12 @@ export function BeforeAfterSlider({ beforeImage, afterImage }: BeforeAfterSlider
         {/* Labels */}
         <div className="absolute bottom-4 left-4 px-3 py-1.5 bg-foreground/70 backdrop-blur-sm rounded-full">
           <span className="text-primary-foreground text-xs font-medium uppercase tracking-wide">
-            Before
+            Avant
           </span>
         </div>
         <div className="absolute bottom-4 right-4 px-3 py-1.5 bg-accent/90 backdrop-blur-sm rounded-full">
           <span className="text-accent-foreground text-xs font-medium uppercase tracking-wide">
-            After
+            Après
           </span>
         </div>
       </div>
