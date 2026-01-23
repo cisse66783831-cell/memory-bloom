@@ -1,0 +1,7 @@
+project_id = "rvbhanhlevsxkpqygbmy"
+
+[functions.restore-photo]
+verify_jwt = false
+
+[functions.process-payment]
+verify_jwt = false
