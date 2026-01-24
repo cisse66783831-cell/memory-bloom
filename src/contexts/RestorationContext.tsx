@@ -16,14 +16,16 @@ interface RestorationState {
   };
   progress: number;
   error: string | null;
+  colorize: boolean;
 }
 
 interface RestorationContextType extends RestorationState {
-  uploadPhoto: (file: File) => Promise<void>;
+  uploadPhoto: (file: File, colorize?: boolean) => Promise<void>;
   processPayment: () => Promise<void>;
   downloadFile: (type: "png" | "pdf") => void;
   reset: () => void;
   setStep: (step: RestorationStep) => void;
+  setColorize: (colorize: boolean) => void;
 }
 
 const RestorationContext = createContext<RestorationContextType | null>(null);
@@ -48,13 +50,18 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
     downloadUrls: { png: null, pdf: null },
     progress: 0,
     error: null,
+    colorize: false,
   });
 
   const setStep = useCallback((step: RestorationStep) => {
     setState((prev) => ({ ...prev, step }));
   }, []);
 
-  const uploadPhoto = useCallback(async (file: File) => {
+  const setColorize = useCallback((colorize: boolean) => {
+    setState((prev) => ({ ...prev, colorize }));
+  }, []);
+
+  const uploadPhoto = useCallback(async (file: File, colorize: boolean = false) => {
     try {
       setState((prev) => ({ 
         ...prev, 
@@ -62,6 +69,7 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
         progress: 0,
         error: null,
         originalImageUrl: URL.createObjectURL(file),
+        colorize,
       }));
 
       // Convert file to base64
@@ -106,13 +114,14 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
         });
       }, 800);
 
-      // Call AI restoration
+      // Call AI restoration with colorize option
       const { data: result, error: restoreError } = await supabase.functions.invoke(
         "restore-photo",
         {
           body: {
             restorationId: restoration.id,
             imageBase64: base64,
+            colorize: state.colorize,
           },
         }
       );
@@ -139,7 +148,7 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
         error: error instanceof Error ? error.message : "Something went wrong",
       }));
     }
-  }, [state.sessionId]);
+  }, [state.sessionId, state.colorize]);
 
   const processPayment = useCallback(async () => {
     if (!state.restorationId) return;
@@ -195,6 +204,7 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
       downloadUrls: { png: null, pdf: null },
       progress: 0,
       error: null,
+      colorize: false,
     });
   }, []);
 
@@ -207,6 +217,7 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
         downloadFile,
         reset,
         setStep,
+        setColorize,
       }}
     >
       {children}

@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { restorationId, imageBase64 } = await req.json();
+    const { restorationId, imageBase64, colorize = false } = await req.json();
 
     if (!restorationId || !imageBase64) {
       return new Response(
@@ -37,6 +37,15 @@ serve(async (req) => {
       .update({ status: "processing" })
       .eq("id", restorationId);
 
+    // Build the prompt based on colorization option
+    const basePrompt = "Restore this old or damaged photo to pristine quality. Fix any scratches, tears, fading, blur, or damage. Keep the original composition and people exactly as they are - do not change faces or add/remove anyone.";
+    
+    const colorizePrompt = colorize 
+      ? " Add realistic, natural colors to this black and white photograph. Use historically accurate colors that match the era the photo was taken. Make colors vibrant but believable."
+      : " Enhance colors to be vibrant but natural.";
+    
+    const finalPrompt = basePrompt + colorizePrompt + " Make it look like a professionally restored vintage photograph. Output only the restored image.";
+
     // Call AI to restore the image
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -52,7 +61,7 @@ serve(async (req) => {
             content: [
               {
                 type: "text",
-                text: "Restore this old or damaged photo to pristine quality. Fix any scratches, tears, fading, blur, or damage. Enhance colors to be vibrant but natural. Keep the original composition and people exactly as they are - do not change faces or add/remove anyone. Make it look like a professionally restored vintage photograph. Output only the restored image."
+                text: finalPrompt
               },
               {
                 type: "image_url",
