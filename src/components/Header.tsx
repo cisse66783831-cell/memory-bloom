@@ -1,7 +1,8 @@
 import { motion } from "framer-motion";
-import { Heart, User, LogOut, History } from "lucide-react";
+import { Heart, User, LogOut, History, Shield } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { useAdminRole } from "@/hooks/useAdminRole";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -13,6 +14,7 @@ import {
 
 export function Header() {
   const { user, signOut } = useAuth();
+  const { isAdmin } = useAdminRole();
 
   return (
     <motion.header
@@ -52,6 +54,16 @@ export function Header() {
                     Mes restaurations
                   </Link>
                 </DropdownMenuItem>
+                {isAdmin && (
+                  <>
+                    <DropdownMenuItem asChild>
+                      <Link to="/admin" className="flex items-center gap-2 cursor-pointer">
+                        <Shield className="w-4 h-4" />
+                        Administration
+                      </Link>
+                    </DropdownMenuItem>
+                  </>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem 
                   onClick={() => signOut()}
