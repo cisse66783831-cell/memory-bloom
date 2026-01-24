@@ -24,15 +24,15 @@ export function UpsellSection({ restoredImageUrl, onSelectSize, onSkip }: Upsell
       >
         {/* Header */}
         <div className="text-center mb-8">
-          <h2 className="font-serif text-3xl md:text-4xl text-foreground mb-3">
-            Transformez Ce Souvenir en Œuvre d'Art
+          <h2 className="font-heading text-2xl md:text-3xl text-foreground mb-3 font-semibold">
+            Transformez ce souvenir en tableau
           </h2>
           <p className="text-muted-foreground text-lg">
-            Impressions sur toile premium, livrées chez vous.
+            Impressions sur toile de qualité, livrées chez vous.
           </p>
         </div>
 
-        {/* Mockup */}
+        {/* Mockup with wood frame */}
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -40,15 +40,18 @@ export function UpsellSection({ restoredImageUrl, onSelectSize, onSkip }: Upsell
           className="relative mb-10"
         >
           <div className="relative mx-auto max-w-sm">
-            {/* Frame mockup */}
-            <div className="relative bg-foreground/10 p-4 rounded-lg shadow-elevated">
-              <div className="absolute inset-0 bg-gradient-to-br from-foreground/5 to-transparent rounded-lg" />
-              <div className="relative bg-primary-foreground p-2 shadow-inner">
-                <img
-                  src={restoredImageUrl}
-                  alt="Framed preview"
-                  className="w-full aspect-[4/3] object-cover"
-                />
+            {/* Wood frame mockup */}
+            <div className="relative p-3 bg-gradient-to-br from-amber-800 via-amber-700 to-amber-900 rounded-lg shadow-elevated">
+              {/* Inner gold trim */}
+              <div className="p-1 bg-gradient-to-br from-amber-500/30 to-amber-600/20 rounded-sm">
+                {/* Photo mat */}
+                <div className="p-2 bg-gradient-to-br from-amber-50 to-amber-100">
+                  <img
+                    src={restoredImageUrl}
+                    alt="Aperçu encadré"
+                    className="w-full aspect-[4/3] object-cover"
+                  />
+                </div>
               </div>
             </div>
             {/* Shadow effect */}
@@ -71,30 +74,30 @@ export function UpsellSection({ restoredImageUrl, onSelectSize, onSkip }: Upsell
                   relative w-full p-6 rounded-xl border-2 transition-all duration-300
                   hover:scale-[1.02] hover:shadow-elevated
                   ${size.popular 
-                    ? "border-accent bg-accent/5 shadow-glow" 
+                    ? "border-primary bg-primary/5 shadow-glow" 
                     : "border-border bg-card hover:border-primary/40"
                   }
                 `}
               >
                 {size.popular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-accent text-accent-foreground text-xs font-medium rounded-full">
-                    Le Plus Populaire
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-primary text-primary-foreground text-xs font-medium rounded-full">
+                    Le plus populaire
                   </div>
                 )}
                 
                 <div className="text-center">
-                  <p className="font-serif text-xl text-foreground mb-1">
+                  <p className="font-heading text-xl text-foreground mb-1 font-medium">
                     {size.label}
                   </p>
-                  <p className="text-2xl font-medium text-foreground">
-                    {size.price.toLocaleString()} <span className="text-sm text-muted-foreground">F</span>
+                  <p className="text-2xl font-bold text-foreground">
+                    {size.price.toLocaleString()} <span className="text-sm text-muted-foreground font-normal">F</span>
                   </p>
                 </div>
 
                 <div className="mt-4 space-y-2 text-sm text-muted-foreground">
                   <div className="flex items-center gap-2">
                     <Check className="w-4 h-4 text-success" />
-                    <span>Toile premium</span>
+                    <span>Toile de qualité</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Check className="w-4 h-4 text-success" />
@@ -119,7 +122,7 @@ export function UpsellSection({ restoredImageUrl, onSelectSize, onSkip }: Upsell
             className="text-muted-foreground hover:text-foreground"
           >
             <X className="w-4 h-4" />
-            Non merci, je suis satisfait de mon téléchargement
+            Non merci, plus tard
           </Button>
         </motion.div>
       </motion.div>

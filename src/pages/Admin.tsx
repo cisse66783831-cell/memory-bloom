@@ -123,7 +123,7 @@ const Admin = () => {
       <main className="container mx-auto px-4 py-8">
         <div className="flex items-center gap-3 mb-8">
           <Shield className="h-8 w-8 text-primary" />
-          <h1 className="text-3xl font-bold">Administration</h1>
+          <h1 className="font-heading text-3xl font-bold">Administration REVIVO</h1>
         </div>
 
         {/* Stats Cards */}
@@ -131,7 +131,7 @@ const Admin = () => {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total Restaurations
+                Total restaurations
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -141,7 +141,7 @@ const Admin = () => {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Restaurations Complétées
+                Restaurations terminées
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -151,7 +151,7 @@ const Admin = () => {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Restaurations Payées
+                Restaurations payées
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -161,7 +161,7 @@ const Admin = () => {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Revenus Totaux
+                Revenus totaux
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -188,7 +188,7 @@ const Admin = () => {
           <TabsContent value="restorations">
             <Card>
               <CardHeader>
-                <CardTitle>Historique des Restaurations</CardTitle>
+                <CardTitle>Historique des restaurations</CardTitle>
               </CardHeader>
               <CardContent>
                 {loadingData ? (
@@ -242,7 +242,7 @@ const Admin = () => {
           <TabsContent value="payments">
             <Card>
               <CardHeader>
-                <CardTitle>Historique des Paiements</CardTitle>
+                <CardTitle>Historique des paiements</CardTitle>
               </CardHeader>
               <CardContent>
                 {loadingData ? (
