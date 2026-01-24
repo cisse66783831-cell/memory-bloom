@@ -9,9 +9,9 @@ interface PaymentSectionProps {
 
 export function PaymentSection({ onPayment, isLoading }: PaymentSectionProps) {
   const features = [
-    { icon: FileImage, text: "PNG haute résolution (sans filigrane)" },
+    { icon: FileImage, text: "Fichier PNG HD" },
     { icon: FileText, text: "PDF prêt à imprimer" },
-    { icon: Download, text: "Téléchargement instantané après paiement" },
+    { icon: Download, text: "Téléchargement immédiat" },
   ];
 
   return (
@@ -23,17 +23,17 @@ export function PaymentSection({ onPayment, isLoading }: PaymentSectionProps) {
     >
       <div className="bg-card rounded-2xl p-8 shadow-elevated border border-border">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-accent/10 rounded-full text-accent mb-4">
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 rounded-full text-primary mb-4">
             <Lock className="w-4 h-4" />
             <span className="text-sm font-medium">Votre souvenir est prêt</span>
           </div>
           
-          <h2 className="font-serif text-3xl md:text-4xl text-foreground mb-3">
-            Débloquez la Version Complète
+          <h2 className="font-heading text-2xl md:text-3xl text-foreground mb-3 font-semibold">
+            Débloquer la version finale
           </h2>
           
           <div className="flex items-baseline justify-center gap-1">
-            <span className="font-serif text-5xl md:text-6xl text-foreground font-medium">
+            <span className="font-heading text-5xl md:text-6xl text-foreground font-bold">
               1000
             </span>
             <span className="text-2xl text-muted-foreground">F</span>
@@ -60,9 +60,8 @@ export function PaymentSection({ onPayment, isLoading }: PaymentSectionProps) {
         <Button
           onClick={onPayment}
           disabled={isLoading}
-          variant="hero"
-          size="xl"
-          className="w-full"
+          size="lg"
+          className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-medium text-lg py-6"
         >
           {isLoading ? (
             <span className="flex items-center gap-2">
@@ -78,9 +77,13 @@ export function PaymentSection({ onPayment, isLoading }: PaymentSectionProps) {
           )}
         </Button>
 
+        <p className="text-center text-sm text-muted-foreground mt-4">
+          Vous ne payez que pour recevoir la version finale.
+        </p>
+
         <div className="mt-6 flex items-center justify-center gap-2 text-sm text-muted-foreground">
           <Shield className="w-4 h-4" />
-          <span>Paiement sécurisé • Accès instantané</span>
+          <span>Paiement sécurisé</span>
         </div>
       </div>
     </motion.div>

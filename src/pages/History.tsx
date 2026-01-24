@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, Calendar, Download, Eye, Image } from "lucide-react";
+import { ArrowLeft, Calendar, Download, Image } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -57,10 +57,24 @@ export default function History() {
     return data?.signedUrl || null;
   };
 
+  const handleDownload = async (restoration: Restoration) => {
+    if (!restoration.is_paid || !restoration.restored_image_path) return;
+    
+    const url = await getImageUrl(restoration.restored_image_path);
+    if (url) {
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `revivo-restauration-${restoration.id}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
   if (authLoading || isLoading) {
     return (
       <div className="min-h-screen bg-gradient-sepia flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-2 border-accent border-t-transparent rounded-full" />
+        <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" />
       </div>
     );
   }
@@ -76,11 +90,11 @@ export default function History() {
             Retour
           </Link>
           
-          <h1 className="font-serif text-3xl md:text-4xl text-foreground">
-            Mes Restaurations
+          <h1 className="font-heading text-2xl md:text-3xl text-foreground font-semibold">
+            Mes photos restaurées
           </h1>
           <p className="text-muted-foreground mt-2">
-            Retrouvez toutes vos photos restaurées
+            Retrouvez tous vos souvenirs
           </p>
         </div>
 
@@ -93,13 +107,13 @@ export default function History() {
             <div className="w-20 h-20 rounded-full bg-secondary mx-auto flex items-center justify-center mb-6">
               <Image className="w-10 h-10 text-muted-foreground" />
             </div>
-            <h2 className="font-serif text-2xl text-foreground mb-2">
+            <h2 className="font-heading text-2xl text-foreground mb-2 font-semibold">
               Aucune restauration
             </h2>
             <p className="text-muted-foreground mb-6">
               Vous n'avez pas encore restauré de photos.
             </p>
-            <Button asChild variant="hero">
+            <Button asChild className="bg-primary hover:bg-primary/90 text-primary-foreground">
               <Link to="/">Restaurer une photo</Link>
             </Button>
           </motion.div>
@@ -111,6 +125,7 @@ export default function History() {
                 restoration={restoration}
                 index={index}
                 getImageUrl={getImageUrl}
+                onDownload={() => handleDownload(restoration)}
               />
             ))}
           </div>
@@ -123,11 +138,13 @@ export default function History() {
 function RestorationCard({ 
   restoration, 
   index,
-  getImageUrl 
+  getImageUrl,
+  onDownload,
 }: { 
   restoration: Restoration; 
   index: number;
   getImageUrl: (path: string | null) => Promise<string | null>;
+  onDownload: () => void;
 }) {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
 
@@ -154,7 +171,7 @@ function RestorationCard({
         {imageUrl ? (
           <img
             src={imageUrl}
-            alt="Restoration preview"
+            alt="Aperçu de la restauration"
             className="w-full h-full object-cover"
           />
         ) : (
@@ -186,7 +203,7 @@ function RestorationCard({
             ${restoration.status === "completed" 
               ? "bg-success/10 text-success" 
               : restoration.status === "processing"
-              ? "bg-accent/10 text-accent"
+              ? "bg-primary/10 text-primary"
               : "bg-muted text-muted-foreground"
             }
           `}>
@@ -196,7 +213,7 @@ function RestorationCard({
           </span>
 
           {restoration.is_paid && (
-            <span className="px-2 py-1 rounded-full text-xs font-medium bg-accent/10 text-accent">
+            <span className="px-2 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">
               Payé
             </span>
           )}
@@ -207,6 +224,7 @@ function RestorationCard({
             variant="outline"
             size="sm"
             className="w-full mt-4 gap-2"
+            onClick={onDownload}
           >
             <Download className="w-4 h-4" />
             Télécharger

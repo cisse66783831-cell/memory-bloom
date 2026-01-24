@@ -1,7 +1,6 @@
 import { useCallback, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Upload, Image, Heart } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Upload, Image, Leaf } from "lucide-react";
 
 interface PhotoUploaderProps {
   onPhotoSelected: (file: File) => void;
@@ -51,12 +50,11 @@ export function PhotoUploader({ onPhotoSelected }: PhotoUploaderProps) {
         transition={{ duration: 0.6 }}
         className="text-center mb-8"
       >
-        <h1 className="font-serif text-4xl md:text-5xl lg:text-6xl text-foreground mb-4 leading-tight">
-          Redonnez Vie à<br />
-          <span className="text-gradient">Vos Souvenirs</span>
-        </h1>
-        <p className="text-muted-foreground text-lg md:text-xl max-w-md mx-auto">
-          Photos anciennes, abîmées ou floues acceptées. Nous restaurons la magie.
+        <h2 className="font-heading text-2xl md:text-3xl text-foreground mb-3 font-semibold">
+          Importez votre photo
+        </h2>
+        <p className="text-muted-foreground text-base md:text-lg max-w-md mx-auto">
+          Même si votre photo est ancienne ou abîmée, nous pouvons souvent l'améliorer.
         </p>
       </motion.div>
 
@@ -73,8 +71,8 @@ export function PhotoUploader({ onPhotoSelected }: PhotoUploaderProps) {
             relative block w-full aspect-[4/3] rounded-2xl border-2 border-dashed 
             cursor-pointer transition-all duration-300 overflow-hidden
             ${isDragging 
-              ? "border-accent bg-accent/5 scale-[1.02]" 
-              : "border-border hover:border-primary/40 bg-card hover:bg-secondary/30"
+              ? "border-primary bg-primary/5 scale-[1.02]" 
+              : "border-muted hover:border-primary/40 bg-card hover:bg-secondary/30"
             }
             shadow-soft hover:shadow-elevated
           `}
@@ -97,7 +95,7 @@ export function PhotoUploader({ onPhotoSelected }: PhotoUploaderProps) {
               >
                 <img
                   src={previewUrl}
-                  alt="Preview"
+                  alt="Aperçu"
                   className="w-full h-full object-cover"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-foreground/60 to-transparent" />
@@ -132,7 +130,7 @@ export function PhotoUploader({ onPhotoSelected }: PhotoUploaderProps) {
                   ou cliquez pour parcourir
                 </p>
                 <div className="flex items-center gap-2 text-muted-foreground text-xs">
-                  <Heart className="w-3 h-3" />
+                  <Leaf className="w-3 h-3 text-primary" />
                   <span>JPG ou PNG acceptés</span>
                 </div>
               </motion.div>
@@ -150,11 +148,11 @@ export function PhotoUploader({ onPhotoSelected }: PhotoUploaderProps) {
         <div className="flex items-center justify-center gap-6 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-success" />
-            <span>Privé et Sécurisé</span>
+            <span>Privé et sécurisé</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-success" />
-            <span>Traitement Rapide</span>
+            <span>Traitement rapide</span>
           </div>
         </div>
       </motion.div>

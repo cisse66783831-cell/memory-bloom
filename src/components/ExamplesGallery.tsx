@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, forwardRef } from "react";
 import { motion } from "framer-motion";
-import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
+import { ChevronLeft, ChevronRight, Leaf } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 // Import example images
@@ -35,7 +35,7 @@ const examples = [
   },
 ];
 
-export function ExamplesGallery() {
+export const ExamplesGallery = forwardRef<HTMLElement, object>((_, ref) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showAfter, setShowAfter] = useState(false);
 
@@ -52,7 +52,7 @@ export function ExamplesGallery() {
   const currentExample = examples[currentIndex];
 
   return (
-    <section className="py-16 bg-secondary/30">
+    <section ref={ref} className="py-16 bg-secondary/30">
       <div className="container">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -61,15 +61,15 @@ export function ExamplesGallery() {
           transition={{ duration: 0.6 }}
           className="text-center mb-10"
         >
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-accent/10 rounded-full text-accent mb-4">
-            <Sparkles className="w-4 h-4" />
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 rounded-full text-primary mb-4">
+            <Leaf className="w-4 h-4" />
             <span className="text-sm font-medium">Exemples de restaurations</span>
           </div>
-          <h2 className="font-serif text-3xl md:text-4xl text-foreground mb-3">
-            Des Résultats Époustouflants
+          <h2 className="font-heading text-2xl md:text-3xl text-foreground mb-3 font-semibold">
+            Découvrez ce que nous pouvons faire
           </h2>
           <p className="text-muted-foreground text-lg max-w-xl mx-auto">
-            Découvrez la magie de notre technologie sur de vraies photos anciennes.
+            Voyez comment nous redonnons vie à de vraies photos de famille.
           </p>
         </motion.div>
 
@@ -113,7 +113,7 @@ export function ExamplesGallery() {
             {/* Status badge */}
             <div className={`absolute top-4 right-4 px-3 py-1.5 rounded-full text-xs font-medium ${
               showAfter 
-                ? "bg-accent text-accent-foreground" 
+                ? "bg-primary text-primary-foreground" 
                 : "bg-foreground/70 text-primary-foreground"
             }`}>
               {showAfter ? "Après" : "Avant"}
@@ -132,7 +132,7 @@ export function ExamplesGallery() {
             </Button>
 
             <div className="text-center">
-              <h3 className="font-serif text-xl text-foreground">
+              <h3 className="font-heading text-xl text-foreground font-medium">
                 {currentExample.title}
               </h3>
               <p className="text-sm text-muted-foreground">
@@ -161,7 +161,7 @@ export function ExamplesGallery() {
                 }}
                 className={`w-2 h-2 rounded-full transition-all ${
                   index === currentIndex
-                    ? "bg-accent w-6"
+                    ? "bg-primary w-6"
                     : "bg-muted-foreground/30 hover:bg-muted-foreground/50"
                 }`}
               />
@@ -171,4 +171,6 @@ export function ExamplesGallery() {
       </div>
     </section>
   );
-}
+});
+
+ExamplesGallery.displayName = "ExamplesGallery";

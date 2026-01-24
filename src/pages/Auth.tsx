@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Mail, Lock, User, ArrowLeft, Heart } from "lucide-react";
+import { Mail, Lock, ArrowLeft, Leaf } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
@@ -37,7 +37,7 @@ export default function Auth() {
       toast({
         title: isLogin ? "Connexion réussie !" : "Compte créé !",
         description: isLogin 
-          ? "Bienvenue sur MemoryRestore." 
+          ? "Bienvenue sur REVIVO." 
           : "Votre compte a été créé avec succès.",
       });
       navigate("/");
@@ -75,9 +75,9 @@ export default function Auth() {
           {/* Logo */}
           <div className="text-center mb-8">
             <div className="w-16 h-16 rounded-full bg-primary mx-auto flex items-center justify-center shadow-soft mb-4">
-              <Heart className="w-8 h-8 text-primary-foreground" />
+              <Leaf className="w-8 h-8 text-primary-foreground" />
             </div>
-            <h1 className="font-serif text-3xl text-foreground">
+            <h1 className="font-heading text-3xl text-foreground font-semibold">
               {isLogin ? "Bon retour !" : "Créer un compte"}
             </h1>
             <p className="text-muted-foreground mt-2">
@@ -127,9 +127,8 @@ export default function Auth() {
 
               <Button
                 type="submit"
-                variant="hero"
                 size="lg"
-                className="w-full"
+                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-medium"
                 disabled={isLoading}
               >
                 {isLoading ? "Chargement..." : isLogin ? "Se connecter" : "Créer mon compte"}
@@ -178,7 +177,7 @@ export default function Auth() {
               <button
                 type="button"
                 onClick={() => setIsLogin(!isLogin)}
-                className="text-accent hover:underline ml-1 font-medium"
+                className="text-primary hover:underline ml-1 font-medium"
               >
                 {isLogin ? "Créer un compte" : "Se connecter"}
               </button>

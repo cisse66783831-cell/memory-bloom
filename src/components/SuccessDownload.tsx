@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Check, Download, FileImage, FileText, Heart } from "lucide-react";
+import { Check, FileImage, FileText, Leaf } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface SuccessDownloadProps {
@@ -33,12 +33,12 @@ export function SuccessDownload({
           <Check className="w-10 h-10 text-success-foreground" />
         </motion.div>
 
-        <h1 className="font-serif text-4xl md:text-5xl text-foreground mb-3">
-          Votre Souvenir est Prêt
+        <h1 className="font-heading text-3xl md:text-4xl text-foreground mb-3 font-semibold">
+          Votre photo restaurée est prête
         </h1>
         
         <p className="text-muted-foreground text-lg mb-8">
-          Merci de préserver ce précieux moment.
+          Merci de nous avoir fait confiance pour préserver ce souvenir.
         </p>
 
         {/* Preview */}
@@ -51,7 +51,7 @@ export function SuccessDownload({
           <div className="relative rounded-2xl overflow-hidden shadow-elevated mx-auto max-w-md">
             <img
               src={restoredImageUrl}
-              alt="Restored photo"
+              alt="Photo restaurée"
               className="w-full aspect-[4/3] object-cover"
             />
             <div className="absolute inset-0 ring-1 ring-inset ring-foreground/5 rounded-2xl" />
@@ -67,9 +67,8 @@ export function SuccessDownload({
         >
           <Button
             onClick={onDownloadPng}
-            variant="hero"
             size="lg"
-            className="w-full"
+            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-medium"
           >
             <FileImage className="w-5 h-5" />
             Télécharger PNG HD
@@ -82,7 +81,7 @@ export function SuccessDownload({
             className="w-full"
           >
             <FileText className="w-5 h-5" />
-            Télécharger PDF Impression
+            Télécharger PDF prêt à imprimer
           </Button>
         </motion.div>
 
@@ -98,8 +97,8 @@ export function SuccessDownload({
             variant="ghost"
             className="text-muted-foreground hover:text-foreground"
           >
-            <Heart className="w-4 h-4" />
-            Transformez-le en cadre
+            <Leaf className="w-4 h-4" />
+            Transformez-le en tableau
           </Button>
         </motion.div>
       </motion.div>

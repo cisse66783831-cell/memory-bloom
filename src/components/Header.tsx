@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Heart, User, LogOut, History, Shield } from "lucide-react";
+import { Leaf, User, LogOut, History, Shield } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdminRole } from "@/hooks/useAdminRole";
@@ -26,10 +26,10 @@ export function Header() {
       <div className="container flex items-center justify-between">
         <Link to="/" className="flex items-center gap-2 group">
           <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center shadow-soft group-hover:shadow-elevated transition-shadow">
-            <Heart className="w-5 h-5 text-primary-foreground" />
+            <Leaf className="w-5 h-5 text-primary-foreground" />
           </div>
-          <span className="font-serif text-2xl text-foreground">
-            MemoryRestore
+          <span className="font-heading text-2xl font-semibold text-foreground">
+            REVIVO
           </span>
         </Link>
 
@@ -38,8 +38,8 @@ export function Header() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="rounded-full">
-                  <div className="w-9 h-9 rounded-full bg-accent/20 flex items-center justify-center">
-                    <User className="w-5 h-5 text-accent" />
+                  <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center">
+                    <User className="w-5 h-5 text-primary" />
                   </div>
                 </Button>
               </DropdownMenuTrigger>
@@ -51,7 +51,7 @@ export function Header() {
                 <DropdownMenuItem asChild>
                   <Link to="/mes-restaurations" className="flex items-center gap-2 cursor-pointer">
                     <History className="w-4 h-4" />
-                    Mes restaurations
+                    Mes photos
                   </Link>
                 </DropdownMenuItem>
                 {isAdmin && (
