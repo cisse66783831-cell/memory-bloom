@@ -1,11 +1,14 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Header } from "@/components/Header";
 import { PhotoUploader } from "@/components/PhotoUploader";
+import { MultiPhotoUploader } from "@/components/MultiPhotoUploader";
 import { ProcessingLoader } from "@/components/ProcessingLoader";
 import { BeforeAfterSlider } from "@/components/BeforeAfterSlider";
 import { PaymentSection } from "@/components/PaymentSection";
 import { SuccessDownload } from "@/components/SuccessDownload";
 import { UpsellSection } from "@/components/UpsellSection";
+import { ExamplesGallery } from "@/components/ExamplesGallery";
+import { SocialShare } from "@/components/SocialShare";
 import { useRestoration, RestorationProvider } from "@/contexts/RestorationContext";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
@@ -114,6 +117,7 @@ function IndexContent() {
               transition={{ duration: 0.3 }}
             >
               <PhotoUploader onPhotoSelected={handlePhotoSelected} />
+              <ExamplesGallery />
             </motion.div>
           )}
 
@@ -174,6 +178,7 @@ function IndexContent() {
                 onDownloadPdf={handleDownloadPdf}
                 onContinue={handleContinueToUpsell}
               />
+              <SocialShare imageUrl={afterImage} />
             </motion.div>
           )}
 
