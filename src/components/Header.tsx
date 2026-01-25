@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Leaf, User, LogOut, History, Shield } from "lucide-react";
+import { Leaf, User, LogOut, History, Shield, LayoutDashboard } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdminRole } from "@/hooks/useAdminRole";
@@ -48,6 +48,12 @@ export function Header() {
                   <p className="text-sm font-medium truncate">{user.email}</p>
                 </div>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link to="/dashboard" className="flex items-center gap-2 cursor-pointer">
+                    <LayoutDashboard className="w-4 h-4" />
+                    Mon espace
+                  </Link>
+                </DropdownMenuItem>
                 <DropdownMenuItem asChild>
                   <Link to="/mes-restaurations" className="flex items-center gap-2 cursor-pointer">
                     <History className="w-4 h-4" />

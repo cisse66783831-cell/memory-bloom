@@ -17,7 +17,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Shield, Image, CreditCard, Loader2 } from 'lucide-react';
+import { Shield, Image, CreditCard, Loader2, Users, Check, X } from 'lucide-react';
 
 interface Restoration {
   id: string;
@@ -38,12 +38,27 @@ interface Payment {
   restoration_id: string;
 }
 
+interface UserProfile {
+  id: string;
+  user_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone_number: string | null;
+  email_verified: boolean;
+  referral_code: string | null;
+  referred_by_user_id: string | null;
+  free_generations_balance: number;
+  created_at: string;
+}
+
 const Admin = () => {
   const navigate = useNavigate();
   const { user, isLoading: authLoading } = useAuth();
   const { isAdmin, loading: adminLoading } = useAdminRole();
   const [restorations, setRestorations] = useState<Restoration[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [users, setUsers] = useState<UserProfile[]>([]);
   const [loadingData, setLoadingData] = useState(true);
 
   useEffect(() => {
@@ -63,7 +78,7 @@ const Admin = () => {
       if (!isAdmin) return;
 
       try {
-        const [restorationsRes, paymentsRes] = await Promise.all([
+        const [restorationsRes, paymentsRes, usersRes] = await Promise.all([
           supabase
             .from('photo_restorations')
             .select('id, created_at, status, is_paid, user_id, session_id')
@@ -72,10 +87,15 @@ const Admin = () => {
             .from('payments')
             .select('id, created_at, amount, currency, status, provider, restoration_id')
             .order('created_at', { ascending: false }),
+          supabase
+            .from('profiles')
+            .select('*')
+            .order('created_at', { ascending: false }),
         ]);
 
         if (restorationsRes.data) setRestorations(restorationsRes.data);
         if (paymentsRes.data) setPayments(paymentsRes.data);
+        if (usersRes.data) setUsers(usersRes.data as UserProfile[]);
       } catch (error) {
         console.error('Error fetching admin data:', error);
       } finally {
@@ -116,6 +136,22 @@ const Admin = () => {
 
   const completedRestorations = restorations.filter((r) => r.status === 'completed').length;
   const paidRestorations = restorations.filter((r) => r.is_paid).length;
+  const totalUsers = users.length;
+  const verifiedUsers = users.filter((u) => u.email_verified).length;
+
+  // Calculate total payments per user
+  const getUserTotalPayments = (userId: string) => {
+    const userRestorations = restorations.filter((r) => r.user_id === userId && r.is_paid);
+    return userRestorations.length * 1000; // Assuming 1000 XOF per restoration
+  };
+
+  // Get referrer name
+  const getReferrerName = (referredByUserId: string | null) => {
+    if (!referredByUserId) return '-';
+    const referrer = users.find((u) => u.user_id === referredByUserId);
+    if (!referrer) return referredByUserId.slice(0, 8) + '...';
+    return `${referrer.first_name || ''} ${referrer.last_name || ''}`.trim() || referrer.email || '-';
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -127,7 +163,7 @@ const Admin = () => {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -161,6 +197,17 @@ const Admin = () => {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
+                Utilisateurs
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{totalUsers}</div>
+              <p className="text-xs text-muted-foreground">{verifiedUsers} vérifiés</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
                 Revenus totaux
               </CardTitle>
             </CardHeader>
@@ -172,9 +219,13 @@ const Admin = () => {
           </Card>
         </div>
 
-        {/* Tabs for Restorations and Payments */}
-        <Tabs defaultValue="restorations" className="space-y-4">
+        {/* Tabs for Restorations, Payments, and Users */}
+        <Tabs defaultValue="users" className="space-y-4">
           <TabsList>
+            <TabsTrigger value="users" className="flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              Utilisateurs
+            </TabsTrigger>
             <TabsTrigger value="restorations" className="flex items-center gap-2">
               <Image className="h-4 w-4" />
               Restaurations
@@ -184,6 +235,89 @@ const Admin = () => {
               Paiements
             </TabsTrigger>
           </TabsList>
+
+          {/* Users Tab */}
+          <TabsContent value="users">
+            <Card>
+              <CardHeader>
+                <CardTitle>Gestion des utilisateurs</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {loadingData ? (
+                  <div className="flex justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                  </div>
+                ) : users.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-8">
+                    Aucun utilisateur trouvé
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Prénom</TableHead>
+                          <TableHead>Nom</TableHead>
+                          <TableHead>Email</TableHead>
+                          <TableHead>Téléphone</TableHead>
+                          <TableHead>Email vérifié</TableHead>
+                          <TableHead>Code parrainage</TableHead>
+                          <TableHead>Parrainé par</TableHead>
+                          <TableHead>Générations gratuites</TableHead>
+                          <TableHead>Paiements totaux</TableHead>
+                          <TableHead>Date création</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {users.map((profile) => (
+                          <TableRow key={profile.id}>
+                            <TableCell>{profile.first_name || '-'}</TableCell>
+                            <TableCell>{profile.last_name || '-'}</TableCell>
+                            <TableCell className="font-mono text-xs">
+                              {profile.email || '-'}
+                            </TableCell>
+                            <TableCell className="font-mono text-xs">
+                              {profile.phone_number || '-'}
+                            </TableCell>
+                            <TableCell>
+                              {profile.email_verified ? (
+                                <Badge variant="default" className="gap-1">
+                                  <Check className="h-3 w-3" /> Oui
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="gap-1">
+                                  <X className="h-3 w-3" /> Non
+                                </Badge>
+                              )}
+                            </TableCell>
+                            <TableCell className="font-mono text-xs">
+                              {profile.referral_code || '-'}
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              {getReferrerName(profile.referred_by_user_id)}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="secondary">
+                                {profile.free_generations_balance}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              {getUserTotalPayments(profile.user_id).toLocaleString('fr-FR')} XOF
+                            </TableCell>
+                            <TableCell>
+                              {format(new Date(profile.created_at), 'dd MMM yyyy', {
+                                locale: fr,
+                              })}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           <TabsContent value="restorations">
             <Card>
