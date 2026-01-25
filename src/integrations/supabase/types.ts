@@ -14,6 +14,86 @@ export type Database = {
   }
   public: {
     Tables: {
+      partner_commissions: {
+        Row: {
+          commission_amount: number
+          created_at: string
+          id: string
+          partner_user_id: string
+          payment_id: string
+          status: string
+        }
+        Insert: {
+          commission_amount?: number
+          created_at?: string
+          id?: string
+          partner_user_id: string
+          payment_id: string
+          status?: string
+        }
+        Update: {
+          commission_amount?: number
+          created_at?: string
+          id?: string
+          partner_user_id?: string
+          payment_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "partner_commissions_partner_user_id_fkey"
+            columns: ["partner_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "partner_commissions_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: true
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      partner_payouts: {
+        Row: {
+          amount: number
+          approved_at: string | null
+          id: string
+          paid_at: string | null
+          partner_user_id: string
+          requested_at: string
+          status: string
+        }
+        Insert: {
+          amount: number
+          approved_at?: string | null
+          id?: string
+          paid_at?: string | null
+          partner_user_id: string
+          requested_at?: string
+          status?: string
+        }
+        Update: {
+          amount?: number
+          approved_at?: string | null
+          id?: string
+          paid_at?: string | null
+          partner_user_id?: string
+          requested_at?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "partner_payouts_partner_user_id_fkey"
+            columns: ["partner_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       payments: {
         Row: {
           amount: number
@@ -110,7 +190,10 @@ export type Database = {
           first_name: string | null
           free_generations_balance: number | null
           id: string
+          is_partner: boolean | null
           last_name: string | null
+          partner_code: string | null
+          partner_commission_balance: number | null
           phone_number: string | null
           phone_verified: boolean | null
           referral_code: string | null
@@ -127,7 +210,10 @@ export type Database = {
           first_name?: string | null
           free_generations_balance?: number | null
           id?: string
+          is_partner?: boolean | null
           last_name?: string | null
+          partner_code?: string | null
+          partner_commission_balance?: number | null
           phone_number?: string | null
           phone_verified?: boolean | null
           referral_code?: string | null
@@ -144,7 +230,10 @@ export type Database = {
           first_name?: string | null
           free_generations_balance?: number | null
           id?: string
+          is_partner?: boolean | null
           last_name?: string | null
+          partner_code?: string | null
+          partner_commission_balance?: number | null
           phone_number?: string | null
           phone_verified?: boolean | null
           referral_code?: string | null
@@ -156,6 +245,154 @@ export type Database = {
           {
             foreignKeyName: "profiles_referred_by_user_id_fkey"
             columns: ["referred_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      promo_code_uses: {
+        Row: {
+          created_at: string
+          id: string
+          payment_id: string | null
+          promo_code_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          payment_id?: string | null
+          promo_code_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          payment_id?: string | null
+          promo_code_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "promo_code_uses_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "promo_code_uses_promo_code_id_fkey"
+            columns: ["promo_code_id"]
+            isOneToOne: false
+            referencedRelation: "promo_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "promo_code_uses_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      promo_codes: {
+        Row: {
+          code: string
+          created_at: string
+          discount_amount: number
+          expires_at: string | null
+          id: string
+          is_active: boolean
+          linked_partner_user_id: string | null
+          new_users_only: boolean
+          updated_at: string
+          usage_count: number
+          usage_limit: number | null
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          discount_amount?: number
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean
+          linked_partner_user_id?: string | null
+          new_users_only?: boolean
+          updated_at?: string
+          usage_count?: number
+          usage_limit?: number | null
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          discount_amount?: number
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean
+          linked_partner_user_id?: string | null
+          new_users_only?: boolean
+          updated_at?: string
+          usage_count?: number
+          usage_limit?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "promo_codes_linked_partner_user_id_fkey"
+            columns: ["linked_partner_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      referrals: {
+        Row: {
+          created_at: string
+          id: string
+          payment_id: string | null
+          referred_user_id: string
+          referrer_user_id: string
+          reward_amount: number
+          reward_type: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          payment_id?: string | null
+          referred_user_id: string
+          referrer_user_id: string
+          reward_amount?: number
+          reward_type: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          payment_id?: string | null
+          referred_user_id?: string
+          referrer_user_id?: string
+          reward_amount?: number
+          reward_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referrals_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referrals_referred_user_id_fkey"
+            columns: ["referred_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "referrals_referrer_user_id_fkey"
+            columns: ["referrer_user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["user_id"]
@@ -188,7 +425,12 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      generate_partner_code: { Args: never; Returns: string }
       generate_referral_code: { Args: never; Returns: string }
+      get_monthly_referral_reward_count: {
+        Args: { p_user_id: string }
+        Returns: number
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

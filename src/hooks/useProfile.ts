@@ -71,17 +71,20 @@ export function useReferralStats() {
         console.error("Error counting referrals:", countError);
       }
 
-      // Get current user's profile for free generations balance
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("free_generations_balance")
-        .eq("user_id", user.id)
-        .single();
+      // Count successful referrals (with reward)
+      const { data: rewards } = await supabase
+        .from("referrals")
+        .select("reward_amount")
+        .eq("referrer_user_id", user.id)
+        .eq("reward_type", "free_generation");
+
+      const successfulReferrals = rewards?.filter(r => r.reward_amount > 0).length || 0;
+      const generationsEarned = rewards?.reduce((sum, r) => sum + r.reward_amount, 0) || 0;
 
       return {
         totalReferrals: totalReferrals || 0,
-        successfulReferrals: totalReferrals || 0, // For now, same as total
-        generationsEarned: profile?.free_generations_balance || 0,
+        successfulReferrals,
+        generationsEarned,
       };
     },
     enabled: !!user?.id,
