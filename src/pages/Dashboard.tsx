@@ -1,25 +1,19 @@
 import { useEffect } from "react";
 import { motion } from "framer-motion";
 import { useNavigate, Link } from "react-router-dom";
-import { 
-  Camera, 
-  Gift, 
-  Copy, 
-  Check, 
-  AlertCircle, 
-  Loader2,
-  Users,
-  Sparkles,
-  Mail
-} from "lucide-react";
-import { useState } from "react";
+import { Camera, AlertCircle, Loader2, Mail } from "lucide-react";
 import { Header } from "@/components/Header";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/contexts/AuthContext";
 import { useProfile, useReferralStats, useResendVerificationEmail } from "@/hooks/useProfile";
 import { useToast } from "@/hooks/use-toast";
+import { DashboardStats } from "@/components/dashboard/DashboardStats";
+import { PhotosSection } from "@/components/dashboard/PhotosSection";
+import { ReferralSection } from "@/components/dashboard/ReferralSection";
+import { PaymentsHistory } from "@/components/dashboard/PaymentsHistory";
+import { AccountInfo } from "@/components/dashboard/AccountInfo";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -28,7 +22,6 @@ export default function Dashboard() {
   const { data: referralStats } = useReferralStats();
   const resendEmail = useResendVerificationEmail();
   const { toast } = useToast();
-  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -36,22 +29,9 @@ export default function Dashboard() {
     }
   }, [user, authLoading, navigate]);
 
-  const handleCopyReferralLink = async () => {
-    if (!profile?.referral_code) return;
-    
-    const referralLink = `${window.location.origin}/auth?ref=${profile.referral_code}`;
-    await navigator.clipboard.writeText(referralLink);
-    setCopied(true);
-    toast({
-      title: "Lien copié !",
-      description: "Partagez ce lien avec vos amis",
-    });
-    setTimeout(() => setCopied(false), 2000);
-  };
-
   const handleResendVerification = async () => {
     if (!user?.email) return;
-    
+
     try {
       await resendEmail.mutateAsync(user.email);
       toast({
@@ -78,28 +58,36 @@ export default function Dashboard() {
   if (!user) return null;
 
   const firstName = profile?.first_name || user.email?.split("@")[0] || "Ami";
-  const referralLink = profile?.referral_code 
-    ? `${window.location.origin}/auth?ref=${profile.referral_code}` 
-    : "";
 
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      
+
       <main className="container mx-auto px-4 py-8">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
+          className="space-y-8"
         >
           {/* Welcome Section */}
-          <div className="mb-8">
-            <h1 className="font-heading text-3xl md:text-4xl font-bold text-foreground">
-              Bonjour, {firstName} !
-            </h1>
-            <p className="text-muted-foreground mt-2">
-              Bienvenue sur votre espace REVIVO
-            </p>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <h1 className="font-heading text-3xl md:text-4xl font-bold text-foreground">
+                Bonjour, {firstName} !
+              </h1>
+              <p className="text-muted-foreground mt-1">
+                Bienvenue sur votre espace REVIVO
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">
+                Générations gratuites disponibles:
+              </span>
+              <span className="text-2xl font-bold text-primary">
+                {profile?.free_generations_balance || 0}
+              </span>
+            </div>
           </div>
 
           {/* Email Verification Banner */}
@@ -107,7 +95,7 @@ export default function Dashboard() {
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mb-6 p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl flex items-center justify-between gap-4 flex-wrap"
+              className="p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl flex items-center justify-between gap-4 flex-wrap"
             >
               <div className="flex items-center gap-3">
                 <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0" />
@@ -139,65 +127,8 @@ export default function Dashboard() {
             </motion.div>
           )}
 
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-            {/* Free Generations Balance */}
-            <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                  <Sparkles className="h-4 w-4" />
-                  Restaurations gratuites
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-4xl font-bold text-primary">
-                  {profile?.free_generations_balance || 0}
-                </div>
-                <p className="text-sm text-muted-foreground mt-1">
-                  disponible{(profile?.free_generations_balance || 0) !== 1 ? "s" : ""}
-                </p>
-              </CardContent>
-            </Card>
-
-            {/* Referrals Count */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                  <Users className="h-4 w-4" />
-                  Parrainages réussis
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-4xl font-bold">
-                  {referralStats?.successfulReferrals || 0}
-                </div>
-                <p className="text-sm text-muted-foreground mt-1">
-                  ami{(referralStats?.successfulReferrals || 0) !== 1 ? "s" : ""} invité{(referralStats?.successfulReferrals || 0) !== 1 ? "s" : ""}
-                </p>
-              </CardContent>
-            </Card>
-
-            {/* Generations Earned */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                  <Gift className="h-4 w-4" />
-                  Générations gagnées
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-4xl font-bold">
-                  {referralStats?.generationsEarned || 0}
-                </div>
-                <p className="text-sm text-muted-foreground mt-1">
-                  via parrainage
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-
           {/* Main CTA */}
-          <Card className="mb-8 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border-primary/20">
+          <Card className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border-primary/20">
             <CardContent className="p-6 flex flex-col md:flex-row items-center justify-between gap-4">
               <div className="flex items-center gap-4">
                 <div className="h-14 w-14 rounded-2xl bg-primary flex items-center justify-center">
@@ -215,65 +146,51 @@ export default function Dashboard() {
               <Button asChild size="lg" className="bg-primary hover:bg-primary/90">
                 <Link to="/">
                   <Camera className="h-5 w-5 mr-2" />
-                  Restaurer une photo
+                  Restaurer une nouvelle photo
                 </Link>
               </Button>
             </CardContent>
           </Card>
 
-          {/* Referral Section */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Gift className="h-5 w-5 text-primary" />
-                Invitez vos amis
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-muted-foreground">
-                Partagez votre lien de parrainage et gagnez une restauration gratuite 
-                pour chaque ami qui effectue son premier achat.
-              </p>
+          {/* Stats Cards */}
+          <DashboardStats
+            freeGenerations={profile?.free_generations_balance || 0}
+            successfulReferrals={referralStats?.successfulReferrals || 0}
+            generationsEarned={referralStats?.generationsEarned || 0}
+            generationsUsed={0} // TODO: Track usage
+          />
 
-              {/* Referral Code */}
-              <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
-                <Badge variant="outline" className="text-base font-mono px-3 py-1">
-                  {profile?.referral_code || "..."}
-                </Badge>
-                <span className="text-muted-foreground text-sm">
-                  Votre code de parrainage
-                </span>
-              </div>
+          {/* Tabbed Content */}
+          <Tabs defaultValue="photos" className="space-y-6">
+            <TabsList className="grid w-full grid-cols-4 max-w-lg">
+              <TabsTrigger value="photos">Mes photos</TabsTrigger>
+              <TabsTrigger value="referral">Parrainage</TabsTrigger>
+              <TabsTrigger value="payments">Paiements</TabsTrigger>
+              <TabsTrigger value="account">Compte</TabsTrigger>
+            </TabsList>
 
-              {/* Referral Link */}
-              <div className="flex gap-2">
-                <div className="flex-1 p-3 bg-muted rounded-lg font-mono text-sm break-all">
-                  {referralLink || "Chargement..."}
-                </div>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={handleCopyReferralLink}
-                  className="flex-shrink-0"
-                >
-                  {copied ? (
-                    <Check className="h-4 w-4 text-green-600" />
-                  ) : (
-                    <Copy className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
+            <TabsContent value="photos">
+              <PhotosSection />
+            </TabsContent>
 
-              <div className="pt-2 border-t">
-                <h4 className="font-medium mb-2">Comment ça marche ?</h4>
-                <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
-                  <li>Partagez votre lien avec vos proches</li>
-                  <li>Ils créent un compte REVIVO</li>
-                  <li>Quand ils effectuent leur premier achat, vous gagnez 1 restauration gratuite</li>
-                </ol>
-              </div>
-            </CardContent>
-          </Card>
+            <TabsContent value="referral">
+              <ReferralSection
+                referralCode={profile?.referral_code || null}
+                totalInvited={referralStats?.totalReferrals || 0}
+                successfulReferrals={referralStats?.successfulReferrals || 0}
+                generationsEarned={referralStats?.generationsEarned || 0}
+                generationsUsed={0}
+              />
+            </TabsContent>
+
+            <TabsContent value="payments">
+              <PaymentsHistory />
+            </TabsContent>
+
+            <TabsContent value="account">
+              <AccountInfo profile={profile || null} email={user?.email} />
+            </TabsContent>
+          </Tabs>
         </motion.div>
       </main>
     </div>
