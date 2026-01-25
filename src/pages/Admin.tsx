@@ -379,11 +379,7 @@ const Admin = () => {
             </TabsContent>
 
             <TabsContent value="referrals">
-              <AdminReferralsTable
-                referrals={referralData.referrals}
-                isLoading={loadingData}
-                stats={referralData.stats}
-              />
+              <AdminReferralsTable />
             </TabsContent>
 
             <TabsContent value="promos">
