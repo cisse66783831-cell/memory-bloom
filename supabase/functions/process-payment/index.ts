@@ -76,6 +76,52 @@ serve(async (req) => {
       })
       .eq("id", restorationId);
 
+    // REFERRAL REWARD LOGIC
+    // If the buyer was referred and the referrer has verified email, grant +1 free generation
+    if (restoration.user_id) {
+      const { data: buyerProfile } = await supabase
+        .from("profiles")
+        .select("referred_by_user_id")
+        .eq("user_id", restoration.user_id)
+        .single();
+
+      if (buyerProfile?.referred_by_user_id) {
+        // Check if this is the first purchase by this user
+        const { count: previousPayments } = await supabase
+          .from("photo_restorations")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", restoration.user_id)
+          .eq("is_paid", true)
+          .neq("id", restorationId);
+
+        // Only reward on first purchase
+        if (previousPayments === 0) {
+          // Get referrer profile
+          const { data: referrerProfile } = await supabase
+            .from("profiles")
+            .select("email_verified, free_generations_balance")
+            .eq("user_id", buyerProfile.referred_by_user_id)
+            .single();
+
+          // Only reward if referrer has verified email
+          if (referrerProfile?.email_verified) {
+            const newBalance = (referrerProfile.free_generations_balance || 0) + 1;
+            
+            await supabase
+              .from("profiles")
+              .update({ free_generations_balance: newBalance })
+              .eq("user_id", buyerProfile.referred_by_user_id);
+
+            console.log(`Referral reward granted to ${buyerProfile.referred_by_user_id}: +1 free generation`);
+          } else {
+            console.log(`Referral reward skipped: referrer ${buyerProfile.referred_by_user_id} email not verified`);
+          }
+        } else {
+          console.log(`Referral reward skipped: not first purchase for user ${restoration.user_id}`);
+        }
+      }
+    }
+
     // Generate signed URLs for downloads
     const { data: pngUrl } = await supabase.storage
       .from("photos")

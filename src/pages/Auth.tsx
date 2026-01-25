@@ -1,30 +1,46 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Mail, Lock, ArrowLeft, Leaf } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
+import { SignupForm } from "@/components/SignupForm";
+import { useLookupReferralCode } from "@/hooks/useProfile";
 
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [searchParams] = useSearchParams();
+  const referralCode = searchParams.get("ref");
   
-  const { signIn, signUp, signInWithGoogle } = useAuth();
+  const { signIn, signUp, signInWithGoogle, user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const lookupReferral = useLookupReferralCode();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Switch to signup if referral code is present
+  useEffect(() => {
+    if (referralCode) {
+      setIsLogin(false);
+    }
+  }, [referralCode]);
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user) {
+      navigate("/dashboard");
+    }
+  }, [user, navigate]);
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
-    const { error } = isLogin 
-      ? await signIn(email, password)
-      : await signUp(email, password);
-
+    const { error } = await signIn(email, password);
     setIsLoading(false);
 
     if (error) {
@@ -35,13 +51,55 @@ export default function Auth() {
       });
     } else {
       toast({
-        title: isLogin ? "Connexion réussie !" : "Compte créé !",
-        description: isLogin 
-          ? "Bienvenue sur REVIVO." 
-          : "Votre compte a été créé avec succès.",
+        title: "Connexion réussie !",
+        description: "Bienvenue sur REVIVO.",
       });
-      navigate("/");
+      navigate("/dashboard");
     }
+  };
+
+  const handleSignup = async (data: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phoneNumber: string;
+    password: string;
+    referralCode?: string;
+  }) => {
+    setIsLoading(true);
+
+    // Look up referrer if referral code provided
+    let referredByUserId: string | undefined;
+    if (data.referralCode) {
+      const result = await lookupReferral.mutateAsync(data.referralCode);
+      if (result) {
+        referredByUserId = result.userId;
+      }
+    }
+
+    const { error } = await signUp(
+      data.email, 
+      data.password, 
+      {
+        firstName: data.firstName,
+        lastName: data.lastName,
+        phoneNumber: data.phoneNumber,
+        referredByUserId,
+      }
+    );
+
+    setIsLoading(false);
+
+    if (error) {
+      return { error };
+    }
+
+    toast({
+      title: "Compte créé !",
+      description: "Vérifiez votre email pour activer votre compte.",
+    });
+    navigate("/dashboard");
+    return { error: null };
   };
 
   const handleGoogleSignIn = async () => {
@@ -65,7 +123,7 @@ export default function Auth() {
         </Link>
       </header>
 
-      <main className="flex-1 flex items-center justify-center px-4">
+      <main className="flex-1 flex items-center justify-center px-4 py-8">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -78,62 +136,70 @@ export default function Auth() {
               <Leaf className="w-8 h-8 text-primary-foreground" />
             </div>
             <h1 className="font-heading text-3xl text-foreground font-semibold">
-              {isLogin ? "Bon retour !" : "Créer un compte"}
+              {isLogin ? "Bon retour !" : "Créer votre compte REVIVO"}
             </h1>
             <p className="text-muted-foreground mt-2">
               {isLogin 
                 ? "Connectez-vous pour retrouver vos photos" 
-                : "Rejoignez-nous pour sauvegarder vos souvenirs"}
+                : "Créez un compte pour sauvegarder vos photos et retrouver vos souvenirs à tout moment."}
             </p>
           </div>
 
           {/* Form */}
           <div className="bg-card rounded-2xl p-8 shadow-elevated border border-border">
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="text-sm font-medium text-foreground mb-2 block">
-                  Email
-                </label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                  <Input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="votre@email.com"
-                    className="pl-10"
-                    required
-                  />
+            {isLogin ? (
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-foreground mb-2 block">
+                    Email
+                  </label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                    <Input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="votre@email.com"
+                      className="pl-10"
+                      required
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <div>
-                <label className="text-sm font-medium text-foreground mb-2 block">
-                  Mot de passe
-                </label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                  <Input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="pl-10"
-                    required
-                    minLength={6}
-                  />
+                <div>
+                  <label className="text-sm font-medium text-foreground mb-2 block">
+                    Mot de passe
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                    <Input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="pl-10"
+                      required
+                      minLength={6}
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <Button
-                type="submit"
-                size="lg"
-                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-medium"
-                disabled={isLoading}
-              >
-                {isLoading ? "Chargement..." : isLogin ? "Se connecter" : "Créer mon compte"}
-              </Button>
-            </form>
+                <Button
+                  type="submit"
+                  size="lg"
+                  className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-medium"
+                  disabled={isLoading}
+                >
+                  {isLoading ? "Chargement..." : "Se connecter"}
+                </Button>
+              </form>
+            ) : (
+              <SignupForm 
+                onSubmit={handleSignup}
+                referralCode={referralCode}
+                isLoading={isLoading}
+              />
+            )}
 
             <div className="relative my-6">
               <div className="absolute inset-0 flex items-center">

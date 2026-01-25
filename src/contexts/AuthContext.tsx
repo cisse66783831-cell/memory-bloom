@@ -2,11 +2,18 @@ import { createContext, useContext, useEffect, useState, ReactNode } from "react
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
+interface SignUpData {
+  firstName: string;
+  lastName: string;
+  phoneNumber: string;
+  referredByUserId?: string;
+}
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   isLoading: boolean;
-  signUp: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signUp: (email: string, password: string, data?: SignUpData) => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signInWithGoogle: () => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
@@ -22,10 +29,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      async (event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
         setIsLoading(false);
+
+        // Update email_verified status when user confirms email
+        if (event === 'USER_UPDATED' && session?.user?.email_confirmed_at) {
+          setTimeout(async () => {
+            await supabase
+              .from('profiles')
+              .update({ email_verified: true })
+              .eq('user_id', session.user.id);
+          }, 0);
+        }
       }
     );
 
@@ -39,15 +56,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signUp = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signUp({
+  const signUp = async (email: string, password: string, data?: SignUpData) => {
+    const { data: authData, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         emailRedirectTo: window.location.origin,
       },
     });
-    return { error: error as Error | null };
+
+    if (error) {
+      return { error: error as Error };
+    }
+
+    // If user was created, update their profile with additional data
+    if (authData.user && data) {
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({
+          first_name: data.firstName,
+          last_name: data.lastName,
+          phone_number: data.phoneNumber,
+          referred_by_user_id: data.referredByUserId || null,
+        })
+        .eq('user_id', authData.user.id);
+
+      if (profileError) {
+        console.error('Error updating profile:', profileError);
+        // Don't fail the signup, profile can be updated later
+      }
+    }
+
+    return { error: null };
   };
 
   const signIn = async (email: string, password: string) => {

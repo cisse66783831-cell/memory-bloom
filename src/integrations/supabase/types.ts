@@ -106,7 +106,15 @@ export type Database = {
           created_at: string
           display_name: string | null
           email: string | null
+          email_verified: boolean | null
+          first_name: string | null
+          free_generations_balance: number | null
           id: string
+          last_name: string | null
+          phone_number: string | null
+          phone_verified: boolean | null
+          referral_code: string | null
+          referred_by_user_id: string | null
           updated_at: string
           user_id: string
         }
@@ -115,7 +123,15 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           email?: string | null
+          email_verified?: boolean | null
+          first_name?: string | null
+          free_generations_balance?: number | null
           id?: string
+          last_name?: string | null
+          phone_number?: string | null
+          phone_verified?: boolean | null
+          referral_code?: string | null
+          referred_by_user_id?: string | null
           updated_at?: string
           user_id: string
         }
@@ -124,11 +140,27 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           email?: string | null
+          email_verified?: boolean | null
+          first_name?: string | null
+          free_generations_balance?: number | null
           id?: string
+          last_name?: string | null
+          phone_number?: string | null
+          phone_verified?: boolean | null
+          referral_code?: string | null
+          referred_by_user_id?: string | null
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_referred_by_user_id_fkey"
+            columns: ["referred_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
@@ -156,6 +188,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      generate_referral_code: { Args: never; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
