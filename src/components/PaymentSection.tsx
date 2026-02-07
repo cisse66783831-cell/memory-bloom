@@ -1,13 +1,51 @@
-import { motion } from "framer-motion";
-import { Check, Download, FileImage, FileText, Lock, Shield } from "lucide-react";
+import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Check, Download, FileImage, FileText, Lock, Shield, Tag, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useValidatePromoCode } from "@/hooks/usePromoCode";
 
 interface PaymentSectionProps {
-  onPayment: () => void;
+  onPayment: (promoCode?: string) => void;
   isLoading?: boolean;
 }
 
+const BASE_PRICE = 1000;
+
 export function PaymentSection({ onPayment, isLoading }: PaymentSectionProps) {
+  const [showPromoField, setShowPromoField] = useState(false);
+  const [promoInput, setPromoInput] = useState("");
+  const [appliedCode, setAppliedCode] = useState<string | null>(null);
+  const [discount, setDiscount] = useState(0);
+  const [promoError, setPromoError] = useState<string | null>(null);
+
+  const validatePromo = useValidatePromoCode();
+
+  const finalPrice = BASE_PRICE - discount;
+
+  const handleApplyPromo = async () => {
+    if (!promoInput.trim()) return;
+    setPromoError(null);
+
+    const result = await validatePromo.mutateAsync(promoInput.trim());
+    if (result.valid) {
+      setAppliedCode(promoInput.trim().toUpperCase());
+      setDiscount(result.discount);
+      setPromoError(null);
+    } else {
+      setPromoError(result.message || "Code invalide");
+      setAppliedCode(null);
+      setDiscount(0);
+    }
+  };
+
+  const handleRemovePromo = () => {
+    setAppliedCode(null);
+    setDiscount(0);
+    setPromoInput("");
+    setPromoError(null);
+  };
+
   const features = [
     { icon: FileImage, text: "Fichier PNG HD" },
     { icon: FileText, text: "PDF prêt à imprimer" },
@@ -32,12 +70,97 @@ export function PaymentSection({ onPayment, isLoading }: PaymentSectionProps) {
             Débloquer la version finale
           </h2>
           
-          <div className="flex items-baseline justify-center gap-1">
-            <span className="font-heading text-5xl md:text-6xl text-foreground font-bold">
-              1000
-            </span>
-            <span className="text-2xl text-muted-foreground">F</span>
+          <div className="flex items-baseline justify-center gap-2">
+            {discount > 0 ? (
+              <>
+                <span className="text-2xl text-muted-foreground line-through">
+                  {BASE_PRICE} F
+                </span>
+                <span className="font-heading text-5xl md:text-6xl text-foreground font-bold">
+                  {finalPrice}
+                </span>
+                <span className="text-2xl text-muted-foreground">F</span>
+              </>
+            ) : (
+              <>
+                <span className="font-heading text-5xl md:text-6xl text-foreground font-bold">
+                  {BASE_PRICE}
+                </span>
+                <span className="text-2xl text-muted-foreground">F</span>
+              </>
+            )}
           </div>
+
+          {/* Promo badge */}
+          <AnimatePresence>
+            {appliedCode && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 bg-success/10 text-success rounded-full text-sm font-medium"
+              >
+                <Tag className="w-3.5 h-3.5" />
+                <span>{appliedCode} — -{discount} F</span>
+                <button
+                  onClick={handleRemovePromo}
+                  className="ml-1 hover:text-success/70 transition-colors"
+                  aria-label="Retirer le code promo"
+                >
+                  ✕
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Promo code section */}
+        <div className="mb-6">
+          {!showPromoField && !appliedCode && (
+            <button
+              onClick={() => setShowPromoField(true)}
+              className="text-sm text-primary hover:text-primary/80 underline underline-offset-2 transition-colors"
+            >
+              Vous avez un code promo ?
+            </button>
+          )}
+
+          <AnimatePresence>
+            {showPromoField && !appliedCode && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="flex gap-2 mt-2">
+                  <Input
+                    placeholder="Entrez votre code"
+                    value={promoInput}
+                    onChange={(e) => setPromoInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleApplyPromo()}
+                    className="flex-1 uppercase"
+                    maxLength={20}
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={handleApplyPromo}
+                    disabled={validatePromo.isPending || !promoInput.trim()}
+                    size="sm"
+                  >
+                    {validatePromo.isPending ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      "Appliquer"
+                    )}
+                  </Button>
+                </div>
+                {promoError && (
+                  <p className="text-sm text-destructive mt-2">{promoError}</p>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         <div className="space-y-4 mb-8">
@@ -58,7 +181,7 @@ export function PaymentSection({ onPayment, isLoading }: PaymentSectionProps) {
         </div>
 
         <Button
-          onClick={onPayment}
+          onClick={() => onPayment(appliedCode || undefined)}
           disabled={isLoading}
           size="lg"
           className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-medium text-lg py-6"
@@ -73,7 +196,7 @@ export function PaymentSection({ onPayment, isLoading }: PaymentSectionProps) {
               Traitement en cours...
             </span>
           ) : (
-            "Débloquer Maintenant – 1000 F"
+            `Débloquer Maintenant – ${finalPrice} F`
           )}
         </Button>
 

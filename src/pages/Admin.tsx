@@ -6,13 +6,14 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAdminRole } from "@/hooks/useAdminRole";
 import { Header } from "@/components/Header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Shield, LayoutDashboard, Users, Image, CreditCard, Gift, Tag, TrendingUp, Loader2 } from "lucide-react";
+import { Shield, LayoutDashboard, Users, Image, CreditCard, Gift, Tag, TrendingUp, Building2, Loader2 } from "lucide-react";
 import { AdminKPICards } from "@/components/admin/AdminKPICards";
 import { AdminUsersTable } from "@/components/admin/AdminUsersTable";
 import { AdminPhotosTable } from "@/components/admin/AdminPhotosTable";
 import { AdminPaymentsTable } from "@/components/admin/AdminPaymentsTable";
 import { AdminReferralsTable } from "@/components/admin/AdminReferralsTable";
 import { AdminPromoCodes } from "@/components/admin/AdminPromoCodes";
+import { AdminPartnersTable } from "@/components/admin/AdminPartnersTable";
 import { AdminFinancialInsights } from "@/components/admin/AdminFinancialInsights";
 import { format, subDays, startOfMonth, startOfDay } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -344,6 +345,10 @@ const Admin = () => {
                 <TrendingUp className="h-4 w-4" />
                 Finances
               </TabsTrigger>
+              <TabsTrigger value="partners" className="flex items-center gap-1.5">
+                <Building2 className="h-4 w-4" />
+                Partenaires
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview">
@@ -388,6 +393,10 @@ const Admin = () => {
 
             <TabsContent value="finances">
               <AdminFinancialInsights data={financialData} />
+            </TabsContent>
+
+            <TabsContent value="partners">
+              <AdminPartnersTable />
             </TabsContent>
           </Tabs>
         </motion.div>
