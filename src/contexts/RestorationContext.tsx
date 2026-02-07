@@ -21,7 +21,7 @@ interface RestorationState {
 
 interface RestorationContextType extends RestorationState {
   uploadPhoto: (file: File, colorize?: boolean) => Promise<void>;
-  processPayment: () => Promise<void>;
+  processPayment: (promoCode?: string) => Promise<void>;
   downloadFile: (type: "png" | "pdf") => void;
   reset: () => void;
   setStep: (step: RestorationStep) => void;
@@ -150,14 +150,14 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
     }
   }, [state.sessionId, state.colorize]);
 
-  const processPayment = useCallback(async () => {
+  const processPayment = useCallback(async (promoCode?: string) => {
     if (!state.restorationId) return;
 
     try {
       const { data: result, error } = await supabase.functions.invoke(
         "process-payment",
         {
-          body: { restorationId: state.restorationId },
+          body: { restorationId: state.restorationId, promoCode },
         }
       );
 

@@ -53,9 +53,9 @@ function IndexContent() {
     await uploadPhoto(file);
   };
 
-  const handlePayment = async () => {
+  const handlePayment = async (promoCode?: string) => {
     setIsPaymentLoading(true);
-    await processPayment();
+    await processPayment(promoCode);
     setIsPaymentLoading(false);
     
     toast({
