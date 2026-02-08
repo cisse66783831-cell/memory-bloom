@@ -57,11 +57,6 @@ function IndexContent() {
     setIsPaymentLoading(true);
     await processPayment(promoCode);
     setIsPaymentLoading(false);
-    
-    toast({
-      title: "Paiement réussi !",
-      description: "Votre photo restaurée est prête à télécharger.",
-    });
   };
 
   const handleDownloadPng = () => {
