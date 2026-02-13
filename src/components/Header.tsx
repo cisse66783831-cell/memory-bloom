@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { User, LogOut, History, Shield, LayoutDashboard } from "lucide-react";
-import logoRevivo from "@/assets/logo-revivo.png";
+import { User, LogOut, History, Shield, LayoutDashboard, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdminRole } from "@/hooks/useAdminRole";
@@ -41,8 +40,14 @@ export function Header() {
       }`}
     >
       <div className="container flex items-center justify-between">
-        <Link to="/" className="group flex items-center">
-          <img src={logoRevivo} alt="REVIVO" className="h-14 w-auto object-contain group-hover:scale-105 transition-transform" />
+        <Link to="/" className="flex items-center gap-2.5 group">
+          <div className="relative w-10 h-10 rounded-lg border-2 border-primary/60 flex items-center justify-center group-hover:scale-105 transition-transform">
+            <span className="font-heading text-lg font-extrabold text-foreground leading-none">R</span>
+            <Sparkles className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 text-primary" />
+          </div>
+          <span className="font-heading text-xl font-bold tracking-widest text-foreground">
+            REVIVO
+          </span>
         </Link>
 
         <nav className="hidden md:flex items-center gap-8">
