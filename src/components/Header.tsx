@@ -41,8 +41,8 @@ export function Header() {
       }`}
     >
       <div className="container flex items-center justify-between">
-        <Link to="/" className="group">
-          <img src={logoRevivo} alt="REVIVO" className="h-10 group-hover:scale-105 transition-transform" />
+        <Link to="/" className="group flex items-center">
+          <img src={logoRevivo} alt="REVIVO" className="h-14 w-auto object-contain group-hover:scale-105 transition-transform" />
         </Link>
 
         <nav className="hidden md:flex items-center gap-8">
