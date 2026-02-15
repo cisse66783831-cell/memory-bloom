@@ -77,14 +77,6 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
         colorize,
       }));
 
-      // Convert file to base64
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-
       // Upload original to storage
       const originalPath = `original/${state.sessionId}/${Date.now()}.jpg`;
       const { error: uploadError } = await supabase.storage
@@ -93,56 +85,26 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
 
       if (uploadError) throw new Error("Failed to upload photo");
 
-      // Create restoration record
+      // Create restoration record (no AI call yet — payment first)
       const { data: restoration, error: insertError } = await supabase
         .from("photo_restorations")
         .insert({
           session_id: state.sessionId,
           original_image_path: originalPath,
-          status: "pending",
+          status: "pending_payment",
+          user_id: (await supabase.auth.getUser()).data.user?.id || null,
         })
         .select()
         .single();
 
       if (insertError || !restoration) throw new Error("Failed to create restoration");
 
-      setState((prev) => ({ ...prev, restorationId: restoration.id, progress: 10 }));
-
-      // Simulate progress updates
-      const progressInterval = setInterval(() => {
-        setState((prev) => {
-          if (prev.progress >= 80) {
-            clearInterval(progressInterval);
-            return prev;
-          }
-          return { ...prev, progress: prev.progress + Math.random() * 15 };
-        });
-      }, 800);
-
-      // Call AI restoration with colorize option
-      const { data: result, error: restoreError } = await supabase.functions.invoke(
-        "restore-photo",
-        {
-          body: {
-            restorationId: restoration.id,
-            imageBase64: base64,
-            colorize: state.colorize,
-          },
-        }
-      );
-
-      clearInterval(progressInterval);
-
-      if (restoreError || !result?.success) {
-        throw new Error(result?.error || "Restoration failed");
-      }
-
+      // Go directly to payment step (no AI generation yet)
       setState((prev) => ({
         ...prev,
+        restorationId: restoration.id,
         step: "comparison",
         progress: 100,
-        previewImageUrl: result.previewUrl || result.previewBase64,
-        restoredImageUrl: result.previewUrl || result.previewBase64,
       }));
 
     } catch (error) {
@@ -211,14 +173,14 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
         .single();
 
       if (payment?.status === "completed") {
-        // Payment validated by admin, get download URLs
+        // Payment validated — check if restoration is done
         const { data: restoration } = await supabase
           .from("photo_restorations")
-          .select("restored_image_path")
+          .select("status, restored_image_path")
           .eq("id", state.restorationId!)
           .single();
 
-        if (restoration?.restored_image_path) {
+        if (restoration?.status === "completed" && restoration.restored_image_path) {
           const { data: pngUrl } = await supabase.storage
             .from("photos")
             .createSignedUrl(restoration.restored_image_path, 3600);
@@ -227,12 +189,14 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
             ...prev,
             step: "success",
             paymentStatus: "completed",
+            restoredImageUrl: pngUrl?.signedUrl || null,
             downloadUrls: {
               png: pngUrl?.signedUrl || null,
               pdf: pngUrl?.signedUrl || null,
             },
           }));
         }
+        // If restoration is still processing, keep polling
       } else if (payment?.status === "rejected") {
         setState((prev) => ({
           ...prev,
