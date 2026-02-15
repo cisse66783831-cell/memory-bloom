@@ -6,7 +6,18 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAdminRole } from "@/hooks/useAdminRole";
 import { Header } from "@/components/Header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Shield, LayoutDashboard, Users, Image, CreditCard, Gift, Tag, TrendingUp, Building2, Loader2 } from "lucide-react";
+import {
+  Shield,
+  LayoutDashboard,
+  Users,
+  Image,
+  CreditCard,
+  Gift,
+  Tag,
+  TrendingUp,
+  Building2,
+  Loader2,
+} from "lucide-react";
 import { AdminKPICards } from "@/components/admin/AdminKPICards";
 import { AdminUsersTable } from "@/components/admin/AdminUsersTable";
 import { AdminPhotosTable } from "@/components/admin/AdminPhotosTable";
@@ -38,6 +49,7 @@ interface Payment {
   provider: string | null;
   restoration_id: string;
   deposit_method?: string | null;
+  sender_phone?: string | null; // AJOUTÉ : Pour stocker le numéro
 }
 
 interface UserProfile {
@@ -87,12 +99,9 @@ const Admin = () => {
           .order("created_at", { ascending: false }),
         supabase
           .from("payments")
-          .select("id, created_at, amount, currency, status, provider, restoration_id, deposit_method")
+          .select("id, created_at, amount, currency, status, provider, restoration_id, deposit_method, sender_phone") // AJOUTÉ : on récupère sender_phone
           .order("created_at", { ascending: false }),
-        supabase
-          .from("profiles")
-          .select("*")
-          .order("created_at", { ascending: false }),
+        supabase.from("profiles").select("*").order("created_at", { ascending: false }),
       ]);
 
       if (restorationsRes.data) setRestorations(restorationsRes.data);
@@ -127,14 +136,9 @@ const Admin = () => {
       .filter((p) => new Date(p.created_at) >= monthStart)
       .reduce((sum, p) => sum + p.amount, 0);
 
-    const activeUsers = users.filter(
-      (u) => new Date(u.created_at) >= thirtyDaysAgo
-    ).length;
+    const activeUsers = users.filter((u) => new Date(u.created_at) >= thirtyDaysAgo).length;
 
-    const totalReferralRewards = users.reduce(
-      (sum, u) => sum + u.free_generations_balance,
-      0
-    );
+    const totalReferralRewards = users.reduce((sum, u) => sum + u.free_generations_balance, 0);
 
     // Estimate: 50 XOF per AI processing
     const estimatedAICost = restorations.filter((r) => r.status === "completed").length * 50;
@@ -175,9 +179,7 @@ const Admin = () => {
     }
 
     // Conversion rate
-    const previewsReady = restorations.filter(
-      (r) => r.preview_image_path || r.status === "completed"
-    ).length;
+    const previewsReady = restorations.filter((r) => r.preview_image_path || r.status === "completed").length;
     const paidRestorations = restorations.filter((r) => r.is_paid).length;
     const conversionRate = previewsReady > 0 ? (paidRestorations / previewsReady) * 100 : 0;
 
@@ -186,9 +188,7 @@ const Admin = () => {
 
     // Gross margin
     const grossMargin =
-      kpiData.totalRevenue > 0
-        ? ((kpiData.totalRevenue - kpiData.estimatedAICost) / kpiData.totalRevenue) * 100
-        : 0;
+      kpiData.totalRevenue > 0 ? ((kpiData.totalRevenue - kpiData.estimatedAICost) / kpiData.totalRevenue) * 100 : 0;
 
     return {
       revenueByDay,
@@ -205,9 +205,7 @@ const Admin = () => {
       .filter((u) => u.referred_by_user_id)
       .map((referred) => {
         const referrer = users.find((u) => u.user_id === referred.referred_by_user_id);
-        const userRestorations = restorations.filter(
-          (r) => r.user_id === referred.user_id && r.is_paid
-        );
+        const userRestorations = restorations.filter((r) => r.user_id === referred.user_id && r.is_paid);
         return {
           referrer: referrer || {
             id: "",
@@ -240,15 +238,13 @@ const Admin = () => {
   // Helper functions
   const getUserTotalPayments = useCallback(
     (userId: string) => {
-      const userRestorations = restorations.filter(
-        (r) => r.user_id === userId && r.is_paid
-      );
+      const userRestorations = restorations.filter((r) => r.user_id === userId && r.is_paid);
       const restorationIds = userRestorations.map((r) => r.id);
       return payments
         .filter((p) => restorationIds.includes(p.restoration_id) && p.status === "completed")
         .reduce((sum, p) => sum + p.amount, 0);
     },
-    [restorations, payments]
+    [restorations, payments],
   );
 
   const getReferrerName = useCallback(
@@ -259,7 +255,7 @@ const Admin = () => {
       const name = `${referrer.first_name || ""} ${referrer.last_name || ""}`.trim();
       return name || referrer.email || "—";
     },
-    [users]
+    [users],
   );
 
   const getUserName = useCallback(
@@ -270,7 +266,7 @@ const Admin = () => {
       const name = `${user.first_name || ""} ${user.last_name || ""}`.trim();
       return name || user.email || "—";
     },
-    [users]
+    [users],
   );
 
   const getUserForRestoration = useCallback(
@@ -278,7 +274,7 @@ const Admin = () => {
       const restoration = restorations.find((r) => r.id === restorationId);
       return getUserName(restoration?.user_id || null);
     },
-    [restorations, getUserName]
+    [restorations, getUserName],
   );
 
   if (authLoading || adminLoading) {
@@ -369,11 +365,7 @@ const Admin = () => {
             </TabsContent>
 
             <TabsContent value="photos">
-              <AdminPhotosTable
-                photos={restorations}
-                isLoading={loadingData}
-                getUserName={getUserName}
-              />
+              <AdminPhotosTable photos={restorations} isLoading={loadingData} getUserName={getUserName} />
             </TabsContent>
 
             <TabsContent value="payments">
