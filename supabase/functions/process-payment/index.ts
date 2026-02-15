@@ -8,6 +8,7 @@ const corsHeaders = {
 
 const PARTNER_COMMISSION = 250;
 const MAX_MONTHLY_FREE_GENERATIONS = 2;
+const UNIT_PRICE = 1000;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -15,7 +16,7 @@ serve(async (req) => {
   }
 
   try {
-    const { restorationId, promoCode, depositMethod, action, paymentId } = await req.json();
+    const { restorationId, promoCode, depositMethod, subscriptionPlanId, action, paymentId } = await req.json();
 
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -61,6 +62,29 @@ serve(async (req) => {
         .select("*")
         .eq("id", payment.restoration_id)
         .single();
+
+      // === CREATE SUBSCRIPTION if payment has provider_reference pointing to a plan ===
+      if (payment.provider === "subscription_purchase" && payment.provider_reference && restoration?.user_id) {
+        const { data: plan } = await supabase
+          .from("subscription_plans")
+          .select("*")
+          .eq("id", payment.provider_reference)
+          .single();
+
+        if (plan) {
+          const expiresAt = new Date();
+          expiresAt.setDate(expiresAt.getDate() + plan.duration_days);
+
+          await supabase.from("user_subscriptions").insert({
+            user_id: restoration.user_id,
+            plan_id: plan.id,
+            payment_id: paymentId,
+            photos_remaining: plan.photo_count,
+            expires_at: expiresAt.toISOString(),
+            status: "active",
+          });
+        }
+      }
 
       // Handle referral/partner rewards
       if (restoration?.user_id) {
@@ -174,8 +198,32 @@ serve(async (req) => {
       }
     }
 
+    // === Determine price based on subscription plan or unit ===
+    let baseAmount = UNIT_PRICE;
+    let providerType = depositMethod || "deposit";
+    let providerReference: string | null = null;
+
+    if (subscriptionPlanId) {
+      const { data: plan, error: planError } = await supabase
+        .from("subscription_plans")
+        .select("*")
+        .eq("id", subscriptionPlanId)
+        .eq("is_active", true)
+        .single();
+
+      if (planError || !plan) {
+        return new Response(
+          JSON.stringify({ error: "Plan d'abonnement introuvable" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      baseAmount = plan.price;
+      providerType = "subscription_purchase";
+      providerReference = plan.id;
+    }
+
     // Calculate price with promo
-    let baseAmount = 1000;
     let discountAmount = 0;
     let appliedPromoCode: any = null;
 
@@ -229,7 +277,8 @@ serve(async (req) => {
         amount: finalAmount,
         currency: "XOF",
         status: "pending",
-        provider: depositMethod || "deposit",
+        provider: providerType,
+        provider_reference: providerReference,
         deposit_method: depositMethod || null,
       })
       .select()
@@ -264,7 +313,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        paymentMethod: "deposit",
+        paymentMethod: subscriptionPlanId ? "subscription_purchase" : "deposit",
         status: "pending",
         paymentId: payment.id,
         amountDue: finalAmount,
