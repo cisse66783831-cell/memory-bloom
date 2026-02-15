@@ -98,20 +98,6 @@ serve(async (req) => {
     }
     const imageBuffer = new Uint8Array(await imageResponse.arrayBuffer());
 
-    // Convert to base64 for preview
-    let binary = "";
-    for (let i = 0; i < imageBuffer.length; i++) {
-      binary += String.fromCharCode(imageBuffer[i]);
-    }
-    const restoredImageBase64 = `data:image/png;base64,${btoa(binary)}`;
-
-    if (!restoredImageBase64) {
-      throw new Error("No image returned from AI");
-    }
-
-    // Preview = same image, access controlled by payment status
-    const previewBase64 = restoredImageBase64;
-
     // Store the restored image in Supabase storage
     const restoredPath = `restored/${restorationId}.png`;
     const { error: uploadError } = await supabase.storage
@@ -126,20 +112,30 @@ serve(async (req) => {
       throw new Error("Failed to upload restored image");
     }
 
+    // Generate a signed URL for preview (valid 1 hour)
+    const { data: signedData, error: signedError } = await supabase.storage
+      .from("photos")
+      .createSignedUrl(restoredPath, 3600);
+
+    if (signedError || !signedData?.signedUrl) {
+      console.error("Signed URL error:", signedError);
+      throw new Error("Failed to generate preview URL");
+    }
+
     // Update the restoration record
     await supabase
       .from("photo_restorations")
       .update({
         status: "completed",
         restored_image_path: restoredPath,
-        preview_image_path: restoredPath, // Same path, access controlled by payment status
+        preview_image_path: restoredPath,
       })
       .eq("id", restorationId);
 
     return new Response(
       JSON.stringify({ 
         success: true,
-        previewBase64: previewBase64, // Send preview to client
+        previewUrl: signedData.signedUrl,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

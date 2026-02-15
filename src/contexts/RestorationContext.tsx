@@ -141,8 +141,8 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
         ...prev,
         step: "comparison",
         progress: 100,
-        previewImageUrl: result.previewBase64,
-        restoredImageUrl: result.previewBase64,
+        previewImageUrl: result.previewUrl || result.previewBase64,
+        restoredImageUrl: result.previewUrl || result.previewBase64,
       }));
 
     } catch (error) {
