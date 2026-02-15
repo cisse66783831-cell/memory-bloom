@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, forwardRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -35,7 +35,7 @@ interface Photo {
   pdf_path: string | null;
 }
 
-export function PhotosSection() {
+export const PhotosSection = forwardRef<HTMLDivElement>(function PhotosSection(_props, ref) {
   const { user } = useAuth();
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
 
@@ -85,7 +85,7 @@ export function PhotosSection() {
 
   if (isLoading) {
     return (
-      <Card>
+      <Card ref={ref}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Image className="h-5 w-5 text-primary" />
@@ -101,7 +101,7 @@ export function PhotosSection() {
 
   if (!photos || photos.length === 0) {
     return (
-      <Card>
+      <Card ref={ref}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Image className="h-5 w-5 text-primary" />
@@ -122,7 +122,7 @@ export function PhotosSection() {
   }
 
   return (
-    <Card>
+    <Card ref={ref}>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Image className="h-5 w-5 text-primary" />
@@ -197,4 +197,4 @@ export function PhotosSection() {
       </CardContent>
     </Card>
   );
-}
+});
