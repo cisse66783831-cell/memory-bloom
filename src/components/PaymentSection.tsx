@@ -366,14 +366,14 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle" }:
                 .map((method) => (
                   <div key={method.id} className="bg-secondary/50 rounded-xl p-4 border border-border/30">
                     <p className="text-sm text-foreground font-medium mb-2">Instructions :</p>
-                    {method.phone_number && (
+                    {(
                       <div className="flex items-center justify-between bg-background/50 rounded-lg p-3 mb-2">
                         <div>
                           <p className="text-xs text-muted-foreground">Numéro</p>
-                          <p className="text-foreground font-mono font-bold">{method.phone_number}</p>
+                          <p className="text-foreground font-mono font-bold">+22666783831</p>
                         </div>
-                        <Button variant="ghost" size="sm" onClick={() => handleCopyNumber(method.phone_number!)} className="h-8">
-                          {copiedNumber === method.phone_number ? <CheckCircle2 className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
+                        <Button variant="ghost" size="sm" onClick={() => handleCopyNumber("+22666783831")} className="h-8">
+                          {copiedNumber === "+22666783831" ? <CheckCircle2 className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
                         </Button>
                       </div>
                     )}
