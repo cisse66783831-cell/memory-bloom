@@ -21,12 +21,12 @@ serve(async (req) => {
       );
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const REPLICATE_API_TOKEN = Deno.env.get("REPLICATE_API_TOKEN");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    if (!REPLICATE_API_TOKEN) {
+      throw new Error("REPLICATE_API_TOKEN is not configured");
     }
 
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
@@ -37,85 +37,87 @@ serve(async (req) => {
       .update({ status: "processing" })
       .eq("id", restorationId);
 
-    // Build the prompt based on colorization option
-    const basePrompt = "Restore this old or damaged photo to pristine quality. Fix any scratches, tears, fading, blur, or damage. Keep the original composition and people exactly as they are - do not change faces or add/remove anyone.";
-    
-    const colorizePrompt = colorize 
-      ? " Add realistic, natural colors to this black and white photograph. Use historically accurate colors that match the era the photo was taken. Make colors vibrant but believable."
-      : " Enhance colors to be vibrant but natural.";
-    
-    const finalPrompt = basePrompt + colorizePrompt + " Make it look like a professionally restored vintage photograph. Output only the restored image.";
+    // Prepare the image URL for Replicate
+    const imageUrl = imageBase64.startsWith("data:") ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`;
 
-    // Call AI to restore the image
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    // Use GFPGAN for face restoration + Real-ESRGAN for upscaling
+    // Model: tencentarc/gfpgan (popular photo restoration model on Replicate)
+    const model = colorize 
+      ? "microsoft/bringing-old-photos-back-to-life:c75db81db6cbd809d93b27b0a856571e0e5696ad0f5e70be4e3cda3013a1c6c0"
+      : "tencentarc/gfpgan:0fbacf7afc6c144e5be9767cff80f25aff23e52b0708f17e20f9879b2f21516c";
+
+    // Create a prediction on Replicate
+    const createResponse = await fetch("https://api.replicate.com/v1/predictions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: `Bearer ${REPLICATE_API_TOKEN}`,
         "Content-Type": "application/json",
+        Prefer: "wait",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-pro-image-preview",
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: finalPrompt
-              },
-              {
-                type: "image_url",
-                image_url: {
-                  url: imageBase64.startsWith("data:") ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`
-                }
-              }
-            ]
-          }
-        ],
-        modalities: ["image", "text"]
+        version: model.split(":")[1],
+        input: colorize 
+          ? { image: imageUrl, with_scratch: true }
+          : { img: imageUrl, version: "v1.4", scale: 2 },
       }),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      
-      if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "Rate limit exceeded. Please try again later." }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      if (response.status === 402) {
-        return new Response(
-          JSON.stringify({ error: "Payment required. Please add credits." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      
-      throw new Error(`AI gateway error: ${response.status}`);
+    if (!createResponse.ok) {
+      const errorText = await createResponse.text();
+      console.error("Replicate API error:", createResponse.status, errorText);
+      throw new Error(`Replicate API error: ${createResponse.status} - ${errorText}`);
     }
 
-    const data = await response.json();
-    const restoredImageBase64 = data.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+    let prediction = await createResponse.json();
+
+    // If not using Prefer: wait, poll for completion
+    while (prediction.status !== "succeeded" && prediction.status !== "failed") {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      const pollResponse = await fetch(`https://api.replicate.com/v1/predictions/${prediction.id}`, {
+        headers: { Authorization: `Bearer ${REPLICATE_API_TOKEN}` },
+      });
+      prediction = await pollResponse.json();
+    }
+
+    if (prediction.status === "failed") {
+      console.error("Replicate prediction failed:", prediction.error);
+      throw new Error(`Restoration failed: ${prediction.error}`);
+    }
+
+    // Get the output image URL from Replicate
+    const outputUrl = Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
+    
+    if (!outputUrl) {
+      throw new Error("No image returned from Replicate");
+    }
+
+    // Download the restored image from Replicate
+    const imageResponse = await fetch(outputUrl);
+    if (!imageResponse.ok) {
+      throw new Error("Failed to download restored image from Replicate");
+    }
+    const imageBuffer = new Uint8Array(await imageResponse.arrayBuffer());
+
+    // Convert to base64 for preview
+    let binary = "";
+    for (let i = 0; i < imageBuffer.length; i++) {
+      binary += String.fromCharCode(imageBuffer[i]);
+    }
+    const restoredImageBase64 = `data:image/png;base64,${btoa(binary)}`;
 
     if (!restoredImageBase64) {
       throw new Error("No image returned from AI");
     }
 
-    // Create a preview version (lower quality, with watermark applied client-side)
-    // The full image is stored but only accessible after payment
+    // Preview = same image, access controlled by payment status
     const previewBase64 = restoredImageBase64;
 
     // Store the restored image in Supabase storage
-    const imageData = restoredImageBase64.replace(/^data:image\/\w+;base64,/, "");
-    const imageBuffer = Uint8Array.from(atob(imageData), c => c.charCodeAt(0));
-
-    const restoredPath = `restored/${restorationId}.jpg`;
+    const restoredPath = `restored/${restorationId}.png`;
     const { error: uploadError } = await supabase.storage
       .from("photos")
       .upload(restoredPath, imageBuffer, {
-        contentType: "image/jpeg",
+        contentType: "image/png",
         upsert: true,
       });
 
