@@ -1,3 +1,4 @@
+import { forwardRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Sparkles, Users, Gift, TrendingUp } from "lucide-react";
 
@@ -8,12 +9,12 @@ interface DashboardStatsProps {
   generationsUsed: number;
 }
 
-export function DashboardStats({
+export const DashboardStats = forwardRef<HTMLDivElement, DashboardStatsProps>(function DashboardStats({
   freeGenerations,
   successfulReferrals,
   generationsEarned,
   generationsUsed,
-}: DashboardStatsProps) {
+}, ref) {
   const stats = [
     {
       label: "Restaurations gratuites",
@@ -43,7 +44,7 @@ export function DashboardStats({
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div ref={ref} className="grid grid-cols-2 md:grid-cols-4 gap-4">
       {stats.map((stat) => (
         <Card 
           key={stat.label} 
@@ -65,4 +66,4 @@ export function DashboardStats({
       ))}
     </div>
   );
-}
+});
