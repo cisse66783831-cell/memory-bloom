@@ -3,6 +3,8 @@ import { supabase } from "@/integrations/supabase/client";
 
 type RestorationStep = "upload" | "processing" | "comparison" | "success" | "upsell";
 
+export type OutputResolution = "1K" | "2K";
+
 interface RestorationState {
   step: RestorationStep;
   restorationId: string | null;
@@ -19,6 +21,7 @@ interface RestorationState {
   colorize: boolean;
   paymentStatus: "idle" | "pending" | "completed";
   paymentId: string | null;
+  outputResolution: OutputResolution;
 }
 
 interface RestorationContextType extends RestorationState {
@@ -29,6 +32,7 @@ interface RestorationContextType extends RestorationState {
   reset: () => void;
   setStep: (step: RestorationStep) => void;
   setColorize: (colorize: boolean) => void;
+  setOutputResolution: (res: OutputResolution) => void;
 }
 
 const RestorationContext = createContext<RestorationContextType | null>(null);
@@ -56,6 +60,7 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
     colorize: false,
     paymentStatus: "idle",
     paymentId: null,
+    outputResolution: "2K",
   });
 
   const setStep = useCallback((step: RestorationStep) => {
@@ -64,6 +69,10 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
 
   const setColorize = useCallback((colorize: boolean) => {
     setState((prev) => ({ ...prev, colorize }));
+  }, []);
+
+  const setOutputResolution = useCallback((outputResolution: OutputResolution) => {
+    setState((prev) => ({ ...prev, outputResolution }));
   }, []);
 
   const uploadPhoto = useCallback(async (file: File, colorize: boolean = false) => {
@@ -77,6 +86,14 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
         colorize,
       }));
 
+      // Convert file to base64 for AI preview
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
       // Upload original to storage
       const originalPath = `original/${state.sessionId}/${Date.now()}.jpg`;
       const { error: uploadError } = await supabase.storage
@@ -85,13 +102,13 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
 
       if (uploadError) throw new Error("Failed to upload photo");
 
-      // Create restoration record (no AI call yet — payment first)
+      // Create restoration record
       const { data: restoration, error: insertError } = await supabase
         .from("photo_restorations")
         .insert({
           session_id: state.sessionId,
           original_image_path: originalPath,
-          status: "pending_payment",
+          status: "pending",
           user_id: (await supabase.auth.getUser()).data.user?.id || null,
         })
         .select()
@@ -99,12 +116,41 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
 
       if (insertError || !restoration) throw new Error("Failed to create restoration");
 
-      // Go directly to payment step (no AI generation yet)
+      setState((prev) => ({ ...prev, restorationId: restoration.id, progress: 10 }));
+
+      // Simulate progress
+      const progressInterval = setInterval(() => {
+        setState((prev) => {
+          if (prev.progress >= 80) { clearInterval(progressInterval); return prev; }
+          return { ...prev, progress: prev.progress + Math.random() * 15 };
+        });
+      }, 800);
+
+      // Call AI restoration in PREVIEW MODE (cheap 1K resolution)
+      const { data: result, error: restoreError } = await supabase.functions.invoke(
+        "restore-photo",
+        {
+          body: {
+            restorationId: restoration.id,
+            imageBase64: base64,
+            colorize: state.colorize,
+            previewMode: true,
+          },
+        }
+      );
+
+      clearInterval(progressInterval);
+
+      if (restoreError || !result?.success) {
+        throw new Error(result?.error || "Restoration failed");
+      }
+
       setState((prev) => ({
         ...prev,
-        restorationId: restoration.id,
         step: "comparison",
         progress: 100,
+        previewImageUrl: result.previewUrl,
+        restoredImageUrl: result.previewUrl,
       }));
 
     } catch (error) {
@@ -124,7 +170,13 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
       const { data: result, error } = await supabase.functions.invoke(
         "process-payment",
         {
-          body: { restorationId: state.restorationId, promoCode, depositMethod, subscriptionPlanId },
+          body: {
+            restorationId: state.restorationId,
+            promoCode,
+            depositMethod,
+            subscriptionPlanId,
+            outputResolution: state.outputResolution,
+          },
         }
       );
 
@@ -133,7 +185,6 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
       }
 
       if (result.status === "completed" && result.downloadUrls) {
-        // Subscription or instant payment
         setState((prev) => ({
           ...prev,
           step: "success",
@@ -145,7 +196,6 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
           },
         }));
       } else {
-        // Deposit pending validation
         setState((prev) => ({
           ...prev,
           paymentStatus: "pending",
@@ -160,7 +210,7 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
         error: error instanceof Error ? error.message : "Payment failed",
       }));
     }
-  }, [state.restorationId]);
+  }, [state.restorationId, state.outputResolution]);
 
   const checkPaymentStatus = useCallback(async () => {
     if (!state.paymentId) return;
@@ -173,7 +223,6 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
         .single();
 
       if (payment?.status === "completed") {
-        // Payment validated — check if restoration is done
         const { data: restoration } = await supabase
           .from("photo_restorations")
           .select("status, restored_image_path")
@@ -196,7 +245,6 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
             },
           }));
         }
-        // If restoration is still processing, keep polling
       } else if (payment?.status === "rejected") {
         setState((prev) => ({
           ...prev,
@@ -234,6 +282,7 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
       colorize: false,
       paymentStatus: "idle",
       paymentId: null,
+      outputResolution: "2K",
     });
   }, []);
 
@@ -248,6 +297,7 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
         reset,
         setStep,
         setColorize,
+        setOutputResolution,
       }}
     >
       {children}

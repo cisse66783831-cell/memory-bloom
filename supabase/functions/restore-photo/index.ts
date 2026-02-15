@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { restorationId, imageBase64, colorize = false } = await req.json();
+    const { restorationId, imageBase64, colorize = false, previewMode = false, resolution = "2K" } = await req.json();
 
     if (!restorationId) {
       return new Response(
@@ -67,6 +67,9 @@ serve(async (req) => {
       imageUrl = `data:image/jpeg;base64,${base64String}`;
     }
 
+    // Use cheapest resolution for preview, user-chosen for final
+    const outputResolution = previewMode ? "1K" : resolution;
+
     // Build the restoration prompt
     const basePrompt = "Increase the resolution of this image to 300 dpi, the standard for print. However, do not change anything else. Remove all edge imperfections and make the photo sharp and clear. Adjust the lighting and overall quality so it looks like it was taken with an iPhone 14 Pro Max camera — natural colors, precise details, balanced exposure, and professional-grade sharpness.";
     const colorizeAddition = colorize
@@ -74,7 +77,7 @@ serve(async (req) => {
       : "";
     const fullPrompt = basePrompt + colorizeAddition;
 
-    console.log("Calling Replicate with google/nano-banana-pro model...");
+    console.log(`Calling Replicate - previewMode: ${previewMode}, resolution: ${outputResolution}`);
 
     // Call Replicate
     const createResponse = await fetch("https://api.replicate.com/v1/predictions", {
@@ -91,7 +94,7 @@ serve(async (req) => {
           image_input: [imageUrl],
           aspect_ratio: "match_input_image",
           output_format: "png",
-          resolution: "2K",
+          resolution: outputResolution,
         },
       }),
     });
@@ -124,7 +127,7 @@ serve(async (req) => {
       throw new Error("No image returned from Replicate");
     }
 
-    console.log("Downloading restored image from:", typeof outputUrl === 'string' ? outputUrl.substring(0, 80) : outputUrl);
+    console.log("Downloading restored image...");
 
     // Download the restored image
     const imageResponse = await fetch(outputUrl);
@@ -133,11 +136,14 @@ serve(async (req) => {
     }
     const imageBuffer = new Uint8Array(await imageResponse.arrayBuffer());
 
-    // Store the restored image
-    const restoredPath = `restored/${restorationId}.png`;
+    // Store with different paths for preview vs final
+    const storagePath = previewMode
+      ? `preview/${restorationId}.png`
+      : `restored/${restorationId}.png`;
+
     const { error: uploadError } = await supabase.storage
       .from("photos")
-      .upload(restoredPath, imageBuffer, {
+      .upload(storagePath, imageBuffer, {
         contentType: "image/png",
         upsert: true,
       });
@@ -150,22 +156,31 @@ serve(async (req) => {
     // Generate a signed URL
     const { data: signedData, error: signedError } = await supabase.storage
       .from("photos")
-      .createSignedUrl(restoredPath, 3600);
+      .createSignedUrl(storagePath, 3600);
 
     if (signedError || !signedData?.signedUrl) {
-      console.error("Signed URL error:", signedError);
       throw new Error("Failed to generate preview URL");
     }
 
     // Update the restoration record
-    await supabase
-      .from("photo_restorations")
-      .update({
-        status: "completed",
-        restored_image_path: restoredPath,
-        preview_image_path: restoredPath,
-      })
-      .eq("id", restorationId);
+    if (previewMode) {
+      await supabase
+        .from("photo_restorations")
+        .update({
+          status: "preview_ready",
+          preview_image_path: storagePath,
+        })
+        .eq("id", restorationId);
+    } else {
+      await supabase
+        .from("photo_restorations")
+        .update({
+          status: "completed",
+          restored_image_path: storagePath,
+          preview_image_path: storagePath,
+        })
+        .eq("id", restorationId);
+    }
 
     return new Response(
       JSON.stringify({
@@ -177,12 +192,6 @@ serve(async (req) => {
 
   } catch (error) {
     console.error("Restore photo error:", error);
-
-    // Try to update status to failed
-    try {
-      const { restorationId } = await new Response(error instanceof Error ? "" : "").json().catch(() => ({}));
-    } catch {}
-
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
