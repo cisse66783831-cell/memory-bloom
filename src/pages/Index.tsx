@@ -12,7 +12,9 @@ import { SocialShare } from "@/components/SocialShare";
 import { PricingPreview } from "@/components/PricingPreview";
 import { useRestoration, RestorationProvider } from "@/contexts/RestorationContext";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Upload, Sparkles, Download, Star, ChevronDown, Shield, Zap, Clock } from "lucide-react";
 import {
@@ -45,8 +47,15 @@ function IndexContent() {
   } = useRestoration();
 
   const { toast } = useToast();
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [isPaymentLoading, setIsPaymentLoading] = useState(false);
   const [showUploader, setShowUploader] = useState(false);
+
+  // Redirect authenticated users to dashboard
+  useEffect(() => {
+    if (user) navigate('/dashboard');
+  }, [user, navigate]);
 
   useEffect(() => {
     if (error) {
