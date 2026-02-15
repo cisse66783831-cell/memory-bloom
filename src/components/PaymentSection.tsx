@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Download, FileImage, FileText, Lock, Shield, Tag, Loader2, Clock, Phone, Copy, CheckCircle2, CreditCard } from "lucide-react";
+import { Check, Download, FileImage, FileText, Lock, Shield, Tag, Loader2, Clock, Phone, Copy, CheckCircle2, CreditCard, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useValidatePromoCode } from "@/hooks/usePromoCode";
@@ -8,12 +8,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
 interface PaymentSectionProps {
-  onPayment: (promoCode?: string, depositMethod?: string) => void;
+  onPayment: (promoCode?: string, depositMethod?: string, subscriptionPlanId?: string) => void;
   isLoading?: boolean;
   paymentStatus?: "idle" | "pending" | "completed";
 }
 
-const BASE_PRICE = 1000;
+const UNIT_PRICE = 1000;
 
 interface DepositInstruction {
   id: string;
@@ -25,30 +25,45 @@ interface DepositInstruction {
   display_order: number;
 }
 
+interface SubscriptionPlan {
+  id: string;
+  name: string;
+  description: string | null;
+  photo_count: number;
+  price: number;
+  duration_days: number;
+}
+
+type PricingTab = "unit" | "subscription";
+
 export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle" }: PaymentSectionProps) {
+  const [activeTab, setActiveTab] = useState<PricingTab>("unit");
   const [showPromoField, setShowPromoField] = useState(false);
   const [promoInput, setPromoInput] = useState("");
   const [appliedCode, setAppliedCode] = useState<string | null>(null);
   const [discount, setDiscount] = useState(0);
   const [promoError, setPromoError] = useState<string | null>(null);
   const [selectedMethod, setSelectedMethod] = useState<string | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
   const [depositInstructions, setDepositInstructions] = useState<DepositInstruction[]>([]);
+  const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [copiedNumber, setCopiedNumber] = useState<string | null>(null);
   const { toast } = useToast();
 
   const validatePromo = useValidatePromoCode();
-  const finalPrice = BASE_PRICE - discount;
+  const currentPrice = activeTab === "unit" ? UNIT_PRICE : (selectedPlan?.price || 0);
+  const finalPrice = Math.max(0, currentPrice - discount);
 
   useEffect(() => {
-    const fetchInstructions = async () => {
-      const { data } = await supabase
-        .from("deposit_instructions")
-        .select("*")
-        .eq("is_active", true)
-        .order("display_order");
-      if (data) setDepositInstructions(data);
+    const fetchData = async () => {
+      const [instructionsRes, plansRes] = await Promise.all([
+        supabase.from("deposit_instructions").select("*").eq("is_active", true).order("display_order"),
+        supabase.from("subscription_plans").select("*").eq("is_active", true).order("price"),
+      ]);
+      if (instructionsRes.data) setDepositInstructions(instructionsRes.data);
+      if (plansRes.data) setPlans(plansRes.data);
     };
-    fetchInstructions();
+    fetchData();
   }, []);
 
   const handleApplyPromo = async () => {
@@ -84,7 +99,15 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle" }:
       toast({ title: "Choisissez un moyen de paiement", variant: "destructive" });
       return;
     }
-    onPayment(appliedCode || undefined, selectedMethod);
+    if (activeTab === "subscription" && !selectedPlan) {
+      toast({ title: "Choisissez un plan d'abonnement", variant: "destructive" });
+      return;
+    }
+    onPayment(
+      appliedCode || undefined,
+      selectedMethod,
+      activeTab === "subscription" ? selectedPlan?.id : undefined
+    );
   };
 
   const getMethodColor = (icon: string | null) => {
@@ -97,7 +120,10 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle" }:
     }
   };
 
-  // Show pending state
+  const getUnitPriceForPlan = (plan: SubscriptionPlan) => Math.round(plan.price / plan.photo_count);
+  const getSavingsPercent = (plan: SubscriptionPlan) => Math.round((1 - getUnitPriceForPlan(plan) / UNIT_PRICE) * 100);
+
+  // Pending state
   if (paymentStatus === "pending") {
     return (
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-lg mx-auto mt-12">
@@ -127,42 +153,141 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle" }:
   ];
 
   return (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.2 }} className="w-full max-w-lg mx-auto mt-12">
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.2 }} className="w-full max-w-2xl mx-auto mt-12">
       <div className="glass-card p-8 shadow-glow border-primary/10">
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <div className="pill-badge mb-4 mx-auto">
             <Lock className="w-4 h-4" />
             <span>Votre souvenir est prêt</span>
           </div>
+          <h2 className="font-heading text-2xl md:text-3xl text-foreground mb-2 font-bold">Débloquer la version finale</h2>
+        </div>
 
-          <h2 className="font-heading text-2xl md:text-3xl text-foreground mb-3 font-bold">Débloquer la version finale</h2>
+        {/* Tabs */}
+        <div className="flex rounded-full bg-secondary/50 p-1 mb-8 border border-border/30">
+          <button
+            onClick={() => { setActiveTab("unit"); setSelectedPlan(null); }}
+            className={`flex-1 py-2.5 px-4 rounded-full text-sm font-medium transition-all ${
+              activeTab === "unit"
+                ? "bg-primary text-primary-foreground shadow-md"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Prix unitaire
+          </button>
+          <button
+            onClick={() => setActiveTab("subscription")}
+            className={`flex-1 py-2.5 px-4 rounded-full text-sm font-medium transition-all flex items-center justify-center gap-1.5 ${
+              activeTab === "subscription"
+                ? "bg-primary text-primary-foreground shadow-md"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            Abonnement
+          </button>
+        </div>
 
-          <div className="flex items-baseline justify-center gap-2">
-            {discount > 0 ? (
-              <>
-                <span className="text-2xl text-muted-foreground line-through">{BASE_PRICE} F</span>
-                <span className="font-heading text-5xl md:text-6xl text-foreground font-extrabold">{finalPrice}</span>
-                <span className="text-2xl text-muted-foreground">F</span>
-              </>
-            ) : (
-              <>
-                <span className="font-heading text-5xl md:text-6xl text-foreground font-extrabold">{BASE_PRICE}</span>
-                <span className="text-2xl text-muted-foreground">F</span>
-              </>
-            )}
-          </div>
+        <AnimatePresence mode="wait">
+          {activeTab === "unit" ? (
+            <motion.div key="unit" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.2 }}>
+              {/* Unit price display */}
+              <div className="text-center mb-6">
+                <div className="flex items-baseline justify-center gap-2">
+                  {discount > 0 ? (
+                    <>
+                      <span className="text-2xl text-muted-foreground line-through">{UNIT_PRICE} F</span>
+                      <span className="font-heading text-5xl md:text-6xl text-foreground font-extrabold">{finalPrice}</span>
+                      <span className="text-2xl text-muted-foreground">F</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-heading text-5xl md:text-6xl text-foreground font-extrabold">{UNIT_PRICE}</span>
+                      <span className="text-2xl text-muted-foreground">F</span>
+                    </>
+                  )}
+                </div>
+                <p className="text-sm text-muted-foreground mt-1">par photo restaurée</p>
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div key="subscription" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }}>
+              {/* Subscription plans */}
+              <div className="grid gap-4 mb-6">
+                {plans.map((plan) => (
+                  <motion.button
+                    key={plan.id}
+                    whileHover={{ scale: 1.01 }}
+                    whileTap={{ scale: 0.99 }}
+                    onClick={() => setSelectedPlan(plan)}
+                    className={`relative p-5 rounded-2xl border-2 transition-all text-left ${
+                      selectedPlan?.id === plan.id
+                        ? "border-primary bg-primary/5 ring-2 ring-primary/20"
+                        : "border-border/50 hover:border-border"
+                    }`}
+                  >
+                    {/* Savings badge */}
+                    <div className="absolute -top-3 right-4 px-3 py-0.5 bg-primary text-primary-foreground text-xs font-bold rounded-full">
+                      -{getSavingsPercent(plan)}%
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-lg font-bold text-foreground">{plan.name}</h3>
+                        <p className="text-sm text-muted-foreground">{plan.photo_count} photos / mois</p>
+                        {plan.description && (
+                          <p className="text-xs text-muted-foreground mt-1">{plan.description}</p>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <p className="text-2xl font-extrabold text-foreground">{plan.price.toLocaleString()} F</p>
+                        <p className="text-xs text-muted-foreground">
+                          soit {getUnitPriceForPlan(plan)} F / photo
+                        </p>
+                        <p className="text-xs text-muted-foreground line-through">
+                          au lieu de {(plan.photo_count * UNIT_PRICE).toLocaleString()} F
+                        </p>
+                      </div>
+                    </div>
+                  </motion.button>
+                ))}
+              </div>
 
-          <AnimatePresence>
-            {appliedCode && (
-              <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
-                className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 bg-success/10 text-success rounded-full text-sm font-medium border border-success/20">
+              {/* Price summary for selected plan */}
+              {selectedPlan && (
+                <div className="text-center mb-4">
+                  <div className="flex items-baseline justify-center gap-2">
+                    {discount > 0 ? (
+                      <>
+                        <span className="text-xl text-muted-foreground line-through">{selectedPlan.price.toLocaleString()} F</span>
+                        <span className="font-heading text-4xl text-foreground font-extrabold">{finalPrice.toLocaleString()}</span>
+                        <span className="text-xl text-muted-foreground">F</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-heading text-4xl text-foreground font-extrabold">{selectedPlan.price.toLocaleString()}</span>
+                        <span className="text-xl text-muted-foreground">F / mois</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Applied promo badge */}
+        <AnimatePresence>
+          {appliedCode && (
+            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
+              className="mb-4 text-center">
+              <span className="inline-flex items-center gap-2 px-3 py-1.5 bg-success/10 text-success rounded-full text-sm font-medium border border-success/20">
                 <Tag className="w-3.5 h-3.5" />
                 <span>{appliedCode} — -{discount} F</span>
-                <button onClick={handleRemovePromo} className="ml-1 hover:text-success/70 transition-colors" aria-label="Retirer le code promo">✕</button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+                <button onClick={handleRemovePromo} className="ml-1 hover:text-success/70 transition-colors">✕</button>
+              </span>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Promo code */}
         <div className="mb-6">
@@ -197,6 +322,14 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle" }:
               <span className="text-foreground text-sm">{feature.text}</span>
             </motion.div>
           ))}
+          {activeTab === "subscription" && selectedPlan && (
+            <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                <Sparkles className="w-4 h-4 text-primary" />
+              </div>
+              <span className="text-foreground text-sm">{selectedPlan.photo_count} restaurations incluses ce mois</span>
+            </motion.div>
+          )}
         </div>
 
         {/* Deposit method selection */}
@@ -224,15 +357,10 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle" }:
           </div>
         </div>
 
-        {/* Show deposit details for selected method */}
+        {/* Deposit details */}
         <AnimatePresence>
           {selectedMethod && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="overflow-hidden mb-6"
-            >
+            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mb-6">
               {depositInstructions
                 .filter((m) => m.method_name === selectedMethod)
                 .map((method) => (
@@ -244,17 +372,8 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle" }:
                           <p className="text-xs text-muted-foreground">Numéro</p>
                           <p className="text-foreground font-mono font-bold">{method.phone_number}</p>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleCopyNumber(method.phone_number!)}
-                          className="h-8"
-                        >
-                          {copiedNumber === method.phone_number ? (
-                            <CheckCircle2 className="w-4 h-4 text-success" />
-                          ) : (
-                            <Copy className="w-4 h-4" />
-                          )}
+                        <Button variant="ghost" size="sm" onClick={() => handleCopyNumber(method.phone_number!)} className="h-8">
+                          {copiedNumber === method.phone_number ? <CheckCircle2 className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
                         </Button>
                       </div>
                     )}
@@ -262,7 +381,7 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle" }:
                       <p className="text-sm text-muted-foreground">Nom du compte : <span className="text-foreground font-medium">{method.account_name}</span></p>
                     )}
                     <p className="text-sm text-muted-foreground mt-2">
-                      Montant à envoyer : <span className="text-foreground font-bold">{finalPrice} F</span>
+                      Montant à envoyer : <span className="text-foreground font-bold">{finalPrice.toLocaleString()} F</span>
                     </p>
                     {method.instructions && (
                       <p className="text-xs text-muted-foreground mt-2">{method.instructions}</p>
@@ -276,7 +395,7 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle" }:
         {/* Confirm button */}
         <Button
           onClick={handleConfirmDeposit}
-          disabled={isLoading || !selectedMethod}
+          disabled={isLoading || !selectedMethod || (activeTab === "subscription" && !selectedPlan)}
           size="lg"
           className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-lg py-6 rounded-full shadow-gold"
         >
@@ -288,13 +407,14 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle" }:
           ) : (
             <>
               <CreditCard className="w-5 h-5 mr-2" />
-              J'ai effectué le dépôt – {finalPrice} F
+              J'ai effectué le dépôt – {finalPrice.toLocaleString()} F
             </>
           )}
         </Button>
 
         <p className="text-center text-xs text-muted-foreground mt-4">
-          Après votre dépôt, un administrateur validera le paiement et vous recevrez l'accès au téléchargement HD.
+          Après votre dépôt, un administrateur validera le paiement
+          {activeTab === "subscription" ? " et activera votre abonnement." : " et vous recevrez l'accès au téléchargement HD."}
         </p>
 
         <div className="mt-6 flex items-center justify-center gap-2 text-sm text-muted-foreground">
