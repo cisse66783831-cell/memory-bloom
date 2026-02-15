@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { restorationId, imageBase64, colorize = false, previewMode = false, resolution = "2K" } = await req.json();
+    const { restorationId, imageBase64, colorize = false, previewMode = false, aspectRatio = "match_input_image" } = await req.json();
 
     if (!restorationId) {
       return new Response(
@@ -67,8 +67,9 @@ serve(async (req) => {
       imageUrl = `data:image/jpeg;base64,${base64String}`;
     }
 
-    // Use cheapest resolution for preview, user-chosen for final
-    const outputResolution = previewMode ? "1K" : resolution;
+    // Preview always uses original aspect ratio + 1K; final uses user-chosen format + 2K
+    const outputAspectRatio = previewMode ? "match_input_image" : aspectRatio;
+    const outputResolution = previewMode ? "1K" : "2K";
 
     // Build the restoration prompt
     const basePrompt = "Increase the resolution of this image to 300 dpi, the standard for print. However, do not change anything else. Remove all edge imperfections and make the photo sharp and clear. Adjust the lighting and overall quality so it looks like it was taken with an iPhone 14 Pro Max camera — natural colors, precise details, balanced exposure, and professional-grade sharpness.";
@@ -92,7 +93,7 @@ serve(async (req) => {
         input: {
           prompt: fullPrompt,
           image_input: [imageUrl],
-          aspect_ratio: "match_input_image",
+          aspect_ratio: outputAspectRatio,
           output_format: "png",
           resolution: outputResolution,
         },

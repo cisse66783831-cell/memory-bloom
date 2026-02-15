@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 type RestorationStep = "upload" | "processing" | "comparison" | "success" | "upsell";
 
-export type OutputResolution = "1K" | "2K";
+export type OutputFormat = "match_input_image" | "1:1" | "3:4" | "4:3" | "9:16" | "16:9";
 
 interface RestorationState {
   step: RestorationStep;
@@ -21,7 +21,7 @@ interface RestorationState {
   colorize: boolean;
   paymentStatus: "idle" | "pending" | "completed";
   paymentId: string | null;
-  outputResolution: OutputResolution;
+  outputFormat: OutputFormat;
 }
 
 interface RestorationContextType extends RestorationState {
@@ -32,7 +32,7 @@ interface RestorationContextType extends RestorationState {
   reset: () => void;
   setStep: (step: RestorationStep) => void;
   setColorize: (colorize: boolean) => void;
-  setOutputResolution: (res: OutputResolution) => void;
+  setOutputFormat: (fmt: OutputFormat) => void;
 }
 
 const RestorationContext = createContext<RestorationContextType | null>(null);
@@ -60,7 +60,7 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
     colorize: false,
     paymentStatus: "idle",
     paymentId: null,
-    outputResolution: "2K",
+    outputFormat: "match_input_image",
   });
 
   const setStep = useCallback((step: RestorationStep) => {
@@ -71,8 +71,8 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({ ...prev, colorize }));
   }, []);
 
-  const setOutputResolution = useCallback((outputResolution: OutputResolution) => {
-    setState((prev) => ({ ...prev, outputResolution }));
+  const setOutputFormat = useCallback((outputFormat: OutputFormat) => {
+    setState((prev) => ({ ...prev, outputFormat }));
   }, []);
 
   const uploadPhoto = useCallback(async (file: File, colorize: boolean = false) => {
@@ -175,7 +175,7 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
             promoCode,
             depositMethod,
             subscriptionPlanId,
-            outputResolution: state.outputResolution,
+            outputFormat: state.outputFormat,
           },
         }
       );
@@ -210,7 +210,7 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
         error: error instanceof Error ? error.message : "Payment failed",
       }));
     }
-  }, [state.restorationId, state.outputResolution]);
+  }, [state.restorationId, state.outputFormat]);
 
   const checkPaymentStatus = useCallback(async () => {
     if (!state.paymentId) return;
@@ -282,7 +282,7 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
       colorize: false,
       paymentStatus: "idle",
       paymentId: null,
-      outputResolution: "2K",
+      outputFormat: "match_input_image",
     });
   }, []);
 
@@ -297,7 +297,7 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
         reset,
         setStep,
         setColorize,
-        setOutputResolution,
+        setOutputFormat,
       }}
     >
       {children}
