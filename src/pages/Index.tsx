@@ -14,7 +14,7 @@ import { useRestoration, RestorationProvider } from "@/contexts/RestorationConte
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Upload, Sparkles, Download, Star, ChevronDown, Shield, Zap, Clock } from "lucide-react";
 import {
@@ -51,8 +51,14 @@ function IndexContent() {
   const navigate = useNavigate();
   const [isPaymentLoading, setIsPaymentLoading] = useState(false);
   const [showUploader, setShowUploader] = useState(false);
+  const [searchParams] = useSearchParams();
 
-  // Authenticated users can access this page to upload new photos
+  // Auto-show uploader when coming from dashboard with ?restore=1
+  useEffect(() => {
+    if (searchParams.get("restore") === "1") {
+      setShowUploader(true);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (error) {

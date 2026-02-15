@@ -145,7 +145,7 @@ export default function Dashboard() {
                 </div>
               </div>
               <Button asChild size="lg" className="bg-primary hover:bg-primary/90">
-                <Link to="/">
+                <Link to="/?restore=1">
                   <Camera className="h-5 w-5 mr-2" />
                   Restaurer une nouvelle photo
                 </Link>
