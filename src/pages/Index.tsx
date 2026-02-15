@@ -102,7 +102,7 @@ function IndexContent() {
     { q: "Est-ce que ma photo reste privée ?", a: "Absolument. Vos photos sont traitées de façon sécurisée et ne sont jamais partagées. Elles sont supprimées automatiquement après 30 jours." },
     { q: "Quels types de photos puis-je restaurer ?", a: "Portraits, photos de famille, paysages, photos de mariage… Même les photos très anciennes, jaunies ou abîmées peuvent être améliorées." },
     { q: "Combien de temps prend la restauration ?", a: "Le traitement prend généralement entre 30 secondes et 2 minutes, selon la complexité de votre photo." },
-    { q: "Est-ce que je peux voir le résultat avant de payer ?", a: "Oui ! Vous voyez un aperçu basse résolution avec un comparateur avant/après. Le fichier HD n'est débloqué qu'après paiement." },
+    { q: "Comment fonctionne le processus ?", a: "Vous importez votre photo, effectuez le paiement, puis notre IA restaure votre image. Vous recevez le résultat HD dès que le paiement est validé." },
     { q: "Quels formats de fichier recevrai-je ?", a: "Vous recevez un fichier PNG haute résolution et un PDF prêt à imprimer, parfait pour encadrer." },
   ];
 
@@ -296,10 +296,14 @@ function IndexContent() {
             <motion.div key="comparison" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }} className="pt-24">
               <div className="container space-y-8 py-8">
                 <div className="text-center">
-                  <h1 className="font-heading text-2xl md:text-3xl text-foreground mb-2 font-bold">Voyez la transformation</h1>
-                  <p className="text-muted-foreground">Votre souvenir, restauré avec soin.</p>
+                  <h1 className="font-heading text-2xl md:text-3xl text-foreground mb-2 font-bold">Votre photo a été importée</h1>
+                  <p className="text-muted-foreground">Procédez au paiement pour lancer la restauration IA.</p>
                 </div>
-                <BeforeAfterSlider beforeImage={beforeImage} afterImage={afterImage} />
+                {originalImageUrl && (
+                  <div className="max-w-md mx-auto">
+                    <img src={originalImageUrl} alt="Photo originale" className="w-full rounded-2xl border border-border/30 shadow-lg" />
+                  </div>
+                )}
                 <PaymentSection onPayment={handlePayment} isLoading={isPaymentLoading} paymentStatus={paymentStatus} />
               </div>
             </motion.div>

@@ -86,6 +86,33 @@ serve(async (req) => {
         }
       }
 
+      // === TRIGGER AI RESTORATION after payment validated ===
+      if (restoration && restoration.status !== "completed") {
+        console.log("Triggering AI restoration for:", payment.restoration_id);
+        try {
+          const restoreResponse = await fetch(
+            `${SUPABASE_URL}/functions/v1/restore-photo`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                restorationId: payment.restoration_id,
+                colorize: false,
+              }),
+            }
+          );
+          const restoreResult = await restoreResponse.json();
+          if (!restoreResult.success) {
+            console.error("AI restoration failed after payment:", restoreResult.error);
+          }
+        } catch (restoreErr) {
+          console.error("Error triggering AI restoration:", restoreErr);
+        }
+      }
+
       // Handle referral/partner rewards
       if (restoration?.user_id) {
         await handleRewards(supabase, restoration, payment);
@@ -178,20 +205,48 @@ serve(async (req) => {
           .update({ is_paid: true, payment_id: payment?.id })
           .eq("id", restorationId);
 
-        // Generate download URLs
-        const { data: pngUrl } = await supabase.storage
-          .from("photos")
-          .createSignedUrl(restoration.restored_image_path || "", 3600);
+        // Trigger AI restoration immediately (subscription = already paid)
+        console.log("Triggering AI restoration for subscription credit:", restorationId);
+        try {
+          const restoreResponse = await fetch(
+            `${SUPABASE_URL}/functions/v1/restore-photo`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                restorationId: restorationId,
+                colorize: false,
+              }),
+            }
+          );
+          const restoreResult = await restoreResponse.json();
+          if (restoreResult.success) {
+            return new Response(
+              JSON.stringify({
+                success: true,
+                paymentMethod: "subscription",
+                status: "completed",
+                downloadUrls: {
+                  png: restoreResult.previewUrl,
+                  pdf: restoreResult.previewUrl,
+                },
+              }),
+              { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+        } catch (restoreErr) {
+          console.error("Error triggering AI restoration:", restoreErr);
+        }
 
         return new Response(
           JSON.stringify({
             success: true,
             paymentMethod: "subscription",
-            status: "completed",
-            downloadUrls: {
-              png: pngUrl?.signedUrl,
-              pdf: pngUrl?.signedUrl,
-            },
+            status: "processing",
+            message: "Paiement validé, restauration en cours...",
           }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
