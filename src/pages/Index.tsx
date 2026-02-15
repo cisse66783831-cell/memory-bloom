@@ -43,7 +43,7 @@ function IndexContent() {
   const {
     step, progress, originalImageUrl, previewImageUrl, restoredImageUrl,
     downloadUrls, error, uploadPhoto, processPayment, checkPaymentStatus, downloadFile, reset, setStep,
-    paymentStatus, outputResolution, setOutputResolution,
+    paymentStatus, outputFormat, setOutputFormat,
   } = useRestoration();
 
   const { toast } = useToast();
@@ -301,25 +301,30 @@ function IndexContent() {
                 </div>
                 <BeforeAfterSlider beforeImage={beforeImage} afterImage={afterImage} />
 
-                {/* Resolution picker */}
-                <div className="max-w-md mx-auto">
-                  <p className="text-sm font-medium text-foreground mb-3 text-center">Choisissez la résolution de sortie :</p>
-                  <div className="flex gap-3 justify-center">
+                {/* Format picker */}
+                <div className="max-w-lg mx-auto">
+                  <p className="text-sm font-medium text-foreground mb-3 text-center">Choisissez le format de sortie :</p>
+                  <div className="grid grid-cols-3 gap-3">
                     {([
-                      { value: "1K" as const, label: "1K", desc: "Standard", price: "500 F" },
-                      { value: "2K" as const, label: "2K", desc: "Haute qualité", price: "1 000 F" },
+                      { value: "match_input_image" as const, label: "Original", icon: "↔" },
+                      { value: "1:1" as const, label: "Carré", icon: "⬜" },
+                      { value: "3:4" as const, label: "Portrait", icon: "▯" },
+                      { value: "4:3" as const, label: "Paysage", icon: "▭" },
+                      { value: "9:16" as const, label: "Story", icon: "📱" },
+                      { value: "16:9" as const, label: "Cinéma", icon: "🎬" },
                     ]).map((opt) => (
                       <button
                         key={opt.value}
-                        onClick={() => setOutputResolution(opt.value)}
-                        className={`flex-1 p-4 rounded-xl border-2 transition-all text-center ${
-                          outputResolution === opt.value
+                        onClick={() => setOutputFormat(opt.value)}
+                        className={`p-3 rounded-xl border-2 transition-all text-center ${
+                          outputFormat === opt.value
                             ? "border-primary bg-primary/10 ring-2 ring-primary/20"
                             : "border-border/50 hover:border-border"
                         }`}
                       >
-                        <p className="text-lg font-bold text-foreground">{opt.label}</p>
-                        <p className="text-xs text-muted-foreground">{opt.desc}</p>
+                        <p className="text-xl mb-1">{opt.icon}</p>
+                        <p className="text-sm font-medium text-foreground">{opt.label}</p>
+                        <p className="text-[10px] text-muted-foreground">{opt.value === "match_input_image" ? "tel quel" : opt.value}</p>
                       </button>
                     ))}
                   </div>
