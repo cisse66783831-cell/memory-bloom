@@ -21,12 +21,12 @@ serve(async (req) => {
       );
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const REPLICATE_API_TOKEN = Deno.env.get("REPLICATE_API_TOKEN");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    if (!REPLICATE_API_TOKEN) {
+      throw new Error("REPLICATE_API_TOKEN is not configured");
     }
 
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
@@ -42,66 +42,69 @@ serve(async (req) => {
 
     // Build the restoration prompt
     const basePrompt = "Increase the resolution of this image to 300 dpi, the standard for print. However, do not change anything else. Remove all edge imperfections and make the photo sharp and clear. Adjust the lighting and overall quality so it looks like it was taken with an iPhone 14 Pro Max camera — natural colors, precise details, balanced exposure, and professional-grade sharpness.";
-    const colorizePrompt = colorize 
+    const colorizeAddition = colorize
       ? " Also, colorize this photo naturally if it is black and white, using realistic and vivid colors appropriate to the era and subject."
       : "";
-    const fullPrompt = basePrompt + colorizePrompt;
+    const fullPrompt = basePrompt + colorizeAddition;
 
-    console.log("Calling Lovable AI with Nano banana pro model...");
+    console.log("Calling Replicate with google/nano-banana-pro model...");
 
-    // Call Lovable AI Gateway with image editing (Nano banana pro)
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    // Call Replicate with google/nano-banana-pro model
+    const createResponse = await fetch("https://api.replicate.com/v1/predictions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: `Bearer ${REPLICATE_API_TOKEN}`,
         "Content-Type": "application/json",
+        Prefer: "wait",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-pro-image-preview",
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: fullPrompt },
-              { type: "image_url", image_url: { url: imageUrl } },
-            ],
-          },
-        ],
-        modalities: ["image", "text"],
+        model: "google/nano-banana-pro",
+        input: {
+          prompt: fullPrompt,
+          image: imageUrl,
+          aspect_ratio: "1:1",
+          output_format: "png",
+        },
       }),
     });
 
-    if (!aiResponse.ok) {
-      const errorText = await aiResponse.text();
-      console.error("Lovable AI error:", aiResponse.status, errorText);
-      
-      if (aiResponse.status === 429) {
-        throw new Error("Service temporarily busy, please try again in a moment.");
-      }
-      if (aiResponse.status === 402) {
-        throw new Error("AI credits exhausted. Please add credits to continue.");
-      }
-      throw new Error(`AI processing error: ${aiResponse.status}`);
+    if (!createResponse.ok) {
+      const errorText = await createResponse.text();
+      console.error("Replicate API error:", createResponse.status, errorText);
+      throw new Error(`Replicate API error: ${createResponse.status} - ${errorText}`);
     }
 
-    const aiResult = await aiResponse.json();
-    console.log("AI response received, extracting image...");
+    let prediction = await createResponse.json();
 
-    // Extract the generated image from the response
-    const generatedImage = aiResult.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-
-    if (!generatedImage) {
-      console.error("No image in AI response:", JSON.stringify(aiResult).substring(0, 500));
-      throw new Error("No image returned from AI");
+    // Poll for completion if not using Prefer: wait
+    while (prediction.status !== "succeeded" && prediction.status !== "failed") {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      const pollResponse = await fetch(`https://api.replicate.com/v1/predictions/${prediction.id}`, {
+        headers: { Authorization: `Bearer ${REPLICATE_API_TOKEN}` },
+      });
+      prediction = await pollResponse.json();
     }
 
-    // Convert base64 data URL to binary buffer
-    const base64Data = generatedImage.replace(/^data:image\/\w+;base64,/, "");
-    const binaryString = atob(base64Data);
-    const imageBuffer = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      imageBuffer[i] = binaryString.charCodeAt(i);
+    if (prediction.status === "failed") {
+      console.error("Replicate prediction failed:", prediction.error);
+      throw new Error(`Restoration failed: ${prediction.error}`);
     }
+
+    // Get the output image URL
+    const outputUrl = Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
+
+    if (!outputUrl) {
+      throw new Error("No image returned from Replicate");
+    }
+
+    console.log("Downloading restored image from:", typeof outputUrl === 'string' ? outputUrl.substring(0, 80) : outputUrl);
+
+    // Download the restored image
+    const imageResponse = await fetch(outputUrl);
+    if (!imageResponse.ok) {
+      throw new Error("Failed to download restored image from Replicate");
+    }
+    const imageBuffer = new Uint8Array(await imageResponse.arrayBuffer());
 
     // Store the restored image in Supabase storage
     const restoredPath = `restored/${restorationId}.png`;
