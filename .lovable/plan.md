@@ -1,28 +1,25 @@
 
-# Plan: Numero de depot unique et redirection utilisateur connecte
 
-## 1. Numero de depot unique (+22666783831)
+## Correction du bug "Restaurer une nouvelle photo ne foncait rien"
 
-Dans `PaymentSection.tsx`, le numero de depot affiche actuellement celui stocke dans la base de donnees (`deposit_instructions`). Le changement consiste a afficher **toujours** le numero `+22666783831` a la place du numero de la base, quel que soit le moyen de paiement selectionne (Orange Money, Wave, etc.).
+### Probleme identifie
 
-## 2. Redirection des utilisateurs connectes
+Dans `src/pages/Index.tsx` (lignes 56-58), un `useEffect` redirige automatiquement tout utilisateur connecte vers `/dashboard`. Quand un utilisateur clique sur "Restaurer une nouvelle photo" depuis le dashboard (lien vers `/`), il est instantanement renvoye au dashboard.
 
-Actuellement, la page d'accueil (`/`) affiche toujours la landing page, meme si l'utilisateur est connecte. Le changement consiste a :
+### Solution
 
-- Dans `src/pages/Index.tsx` : verifier si l'utilisateur est connecte via `useAuth()`. Si oui, rediriger automatiquement vers `/dashboard`.
-- Dans `src/contexts/AuthContext.tsx` : mettre a jour le `redirectTo` de Google OAuth pour pointer vers `/dashboard` au lieu de `/` (origin).
+Modifier la logique de redirection pour permettre aux utilisateurs connectes d'acceder a la page d'upload quand ils le souhaitent. Deux options :
 
----
+**Option retenue** : Supprimer la redirection automatique dans `Index.tsx`. Les utilisateurs connectes verront la landing page normalement et pourront uploader des photos. La redirection vers le dashboard se fera uniquement depuis la page `/auth` apres connexion.
 
-## Details techniques
+### Changements techniques
 
-### Fichier: `src/components/PaymentSection.tsx`
-- Remplacer l'affichage de `method.phone_number` par la constante `+22666783831` dans la section "Deposit details" (ligne ~373).
-- Le numero a copier sera egalement `+22666783831`.
+**Fichier : `src/pages/Index.tsx`**
+- Supprimer le `useEffect` de redirection (lignes 56-58) qui redirige les utilisateurs connectes vers `/dashboard`
+- L'import `useNavigate` et `useAuth` restent necessaires pour d'autres fonctionnalites
 
-### Fichier: `src/pages/Index.tsx`
-- Importer `useAuth` depuis `AuthContext` et `useNavigate` depuis `react-router-dom`.
-- Ajouter un `useEffect` dans `IndexContent` qui redirige vers `/dashboard` si `user` est present.
+### Taches 1 et 2 (deja appliquees)
 
-### Fichier: `src/contexts/AuthContext.tsx`
-- Changer `redirectTo: window.location.origin` dans `signInWithGoogle` en `redirectTo: window.location.origin + '/dashboard'`.
+- **Tache 1** (securiser le paiement) : deja en place dans `PaymentSection.tsx` avec la verification `useAuth` et redirection vers `/auth`
+- **Tache 2** (RLS photo_restorations) : migration SQL deja appliquee avec les policies INSERT/SELECT/UPDATE pour `authenticated`
+
