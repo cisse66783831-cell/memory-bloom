@@ -26,7 +26,7 @@ interface RestorationState {
 
 interface RestorationContextType extends RestorationState {
   uploadPhoto: (file: File, colorize?: boolean) => Promise<void>;
-  processPayment: (promoCode?: string, depositMethod?: string, subscriptionPlanId?: string) => Promise<void>;
+  processPayment: (promoCode?: string, depositMethod?: string, subscriptionPlanId?: string, senderPhone?: string) => Promise<void>;
   checkPaymentStatus: () => Promise<void>;
   downloadFile: (type: "png" | "pdf") => void;
   reset: () => void;
@@ -163,7 +163,7 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
     }
   }, [state.sessionId, state.colorize]);
 
-  const processPayment = useCallback(async (promoCode?: string, depositMethod?: string, subscriptionPlanId?: string) => {
+  const processPayment = useCallback(async (promoCode?: string, depositMethod?: string, subscriptionPlanId?: string, senderPhone?: string) => {
     if (!state.restorationId) return;
 
     try {
@@ -176,6 +176,7 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
             depositMethod,
             subscriptionPlanId,
             outputFormat: state.outputFormat,
+            senderPhone,
           },
         }
       );

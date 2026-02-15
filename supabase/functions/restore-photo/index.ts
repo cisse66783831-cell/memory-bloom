@@ -24,6 +24,7 @@ serve(async (req) => {
     const REPLICATE_API_TOKEN = Deno.env.get("REPLICATE_API_TOKEN");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const REPLICATE_WEBHOOK_URL = Deno.env.get("REPLICATE_WEBHOOK_URL");
 
     if (!REPLICATE_API_TOKEN) {
       throw new Error("REPLICATE_API_TOKEN is not configured");
@@ -80,7 +81,59 @@ serve(async (req) => {
 
     console.log(`Calling Replicate - previewMode: ${previewMode}, resolution: ${outputResolution}`);
 
-    // Call Replicate
+    // Build Replicate request body
+    const replicateBody: any = {
+      version: "f5318740f60d79bf0c480216aaf9ca7614977553170eacd19ff8cbcda2409ac8",
+      input: {
+        prompt: fullPrompt,
+        image_input: [imageUrl],
+        aspect_ratio: outputAspectRatio,
+        output_format: "png",
+        resolution: outputResolution,
+      },
+    };
+
+    // For non-preview (final) mode, use webhook instead of polling
+    if (!previewMode && REPLICATE_WEBHOOK_URL) {
+      replicateBody.webhook = REPLICATE_WEBHOOK_URL;
+      replicateBody.webhook_events_filter = ["completed"];
+
+      const createResponse = await fetch("https://api.replicate.com/v1/predictions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${REPLICATE_API_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(replicateBody),
+      });
+
+      if (!createResponse.ok) {
+        const errorText = await createResponse.text();
+        console.error("Replicate API error:", createResponse.status, errorText);
+        throw new Error(`Replicate API error: ${createResponse.status} - ${errorText}`);
+      }
+
+      const prediction = await createResponse.json();
+
+      // Store the prediction ID for webhook matching
+      await supabase
+        .from("photo_restorations")
+        .update({ replicate_prediction_id: prediction.id })
+        .eq("id", restorationId);
+
+      console.log(`Prediction ${prediction.id} started, webhook will handle completion.`);
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: "Processing started, webhook will handle completion.",
+          predictionId: prediction.id,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Preview mode: use synchronous polling (Prefer: wait)
     const createResponse = await fetch("https://api.replicate.com/v1/predictions", {
       method: "POST",
       headers: {
@@ -88,16 +141,7 @@ serve(async (req) => {
         "Content-Type": "application/json",
         Prefer: "wait",
       },
-      body: JSON.stringify({
-        version: "f5318740f60d79bf0c480216aaf9ca7614977553170eacd19ff8cbcda2409ac8",
-        input: {
-          prompt: fullPrompt,
-          image_input: [imageUrl],
-          aspect_ratio: outputAspectRatio,
-          output_format: "png",
-          resolution: outputResolution,
-        },
-      }),
+      body: JSON.stringify(replicateBody),
     });
 
     if (!createResponse.ok) {
@@ -108,7 +152,7 @@ serve(async (req) => {
 
     let prediction = await createResponse.json();
 
-    // Poll for completion
+    // Poll for completion (only for preview mode)
     while (prediction.status !== "succeeded" && prediction.status !== "failed") {
       await new Promise(resolve => setTimeout(resolve, 2000));
       const pollResponse = await fetch(`https://api.replicate.com/v1/predictions/${prediction.id}`, {
