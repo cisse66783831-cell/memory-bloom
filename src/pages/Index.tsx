@@ -39,7 +39,8 @@ const stagger = {
 function IndexContent() {
   const {
     step, progress, originalImageUrl, previewImageUrl, restoredImageUrl,
-    downloadUrls, error, uploadPhoto, processPayment, downloadFile, reset, setStep,
+    downloadUrls, error, uploadPhoto, processPayment, checkPaymentStatus, downloadFile, reset, setStep,
+    paymentStatus,
   } = useRestoration();
 
   const { toast } = useToast();
@@ -52,10 +53,17 @@ function IndexContent() {
     }
   }, [error, toast]);
 
+  // Poll for payment validation when pending
+  useEffect(() => {
+    if (paymentStatus !== "pending") return;
+    const interval = setInterval(() => { checkPaymentStatus(); }, 5000);
+    return () => clearInterval(interval);
+  }, [paymentStatus, checkPaymentStatus]);
+
   const handlePhotoSelected = async (file: File) => { await uploadPhoto(file); };
-  const handlePayment = async (promoCode?: string) => {
+  const handlePayment = async (promoCode?: string, depositMethod?: string) => {
     setIsPaymentLoading(true);
-    await processPayment(promoCode);
+    await processPayment(promoCode, depositMethod);
     setIsPaymentLoading(false);
   };
   const handleDownloadPng = () => { if (downloadUrls.png) downloadFile("png"); toast({ title: "Téléchargement démarré", description: "Votre PNG HD est en cours de téléchargement..." }); };
@@ -338,7 +346,7 @@ function IndexContent() {
                   <p className="text-muted-foreground">Votre souvenir, restauré avec soin.</p>
                 </div>
                 <BeforeAfterSlider beforeImage={beforeImage} afterImage={afterImage} />
-                <PaymentSection onPayment={handlePayment} isLoading={isPaymentLoading} />
+                <PaymentSection onPayment={handlePayment} isLoading={isPaymentLoading} paymentStatus={paymentStatus} />
               </div>
             </motion.div>
           )}

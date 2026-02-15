@@ -17,11 +17,14 @@ interface RestorationState {
   progress: number;
   error: string | null;
   colorize: boolean;
+  paymentStatus: "idle" | "pending" | "completed";
+  paymentId: string | null;
 }
 
 interface RestorationContextType extends RestorationState {
   uploadPhoto: (file: File, colorize?: boolean) => Promise<void>;
-  processPayment: (promoCode?: string) => Promise<void>;
+  processPayment: (promoCode?: string, depositMethod?: string) => Promise<void>;
+  checkPaymentStatus: () => Promise<void>;
   downloadFile: (type: "png" | "pdf") => void;
   reset: () => void;
   setStep: (step: RestorationStep) => void;
@@ -51,6 +54,8 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
     progress: 0,
     error: null,
     colorize: false,
+    paymentStatus: "idle",
+    paymentId: null,
   });
 
   const setStep = useCallback((step: RestorationStep) => {
@@ -150,14 +155,14 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
     }
   }, [state.sessionId, state.colorize]);
 
-  const processPayment = useCallback(async (promoCode?: string) => {
+  const processPayment = useCallback(async (promoCode?: string, depositMethod?: string) => {
     if (!state.restorationId) return;
 
     try {
       const { data: result, error } = await supabase.functions.invoke(
         "process-payment",
         {
-          body: { restorationId: state.restorationId, promoCode },
+          body: { restorationId: state.restorationId, promoCode, depositMethod },
         }
       );
 
@@ -165,14 +170,26 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
         throw new Error(result?.error || "Payment failed");
       }
 
-      setState((prev) => ({
-        ...prev,
-        step: "success",
-        downloadUrls: {
-          png: result.downloadUrls.png,
-          pdf: result.downloadUrls.pdf,
-        },
-      }));
+      if (result.status === "completed" && result.downloadUrls) {
+        // Subscription or instant payment
+        setState((prev) => ({
+          ...prev,
+          step: "success",
+          paymentStatus: "completed",
+          paymentId: result.paymentId,
+          downloadUrls: {
+            png: result.downloadUrls.png,
+            pdf: result.downloadUrls.pdf,
+          },
+        }));
+      } else {
+        // Deposit pending validation
+        setState((prev) => ({
+          ...prev,
+          paymentStatus: "pending",
+          paymentId: result.paymentId,
+        }));
+      }
 
     } catch (error) {
       console.error("Payment error:", error);
@@ -182,6 +199,52 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
       }));
     }
   }, [state.restorationId]);
+
+  const checkPaymentStatus = useCallback(async () => {
+    if (!state.paymentId) return;
+
+    try {
+      const { data: payment } = await supabase
+        .from("payments")
+        .select("status")
+        .eq("id", state.paymentId)
+        .single();
+
+      if (payment?.status === "completed") {
+        // Payment validated by admin, get download URLs
+        const { data: restoration } = await supabase
+          .from("photo_restorations")
+          .select("restored_image_path")
+          .eq("id", state.restorationId!)
+          .single();
+
+        if (restoration?.restored_image_path) {
+          const { data: pngUrl } = await supabase.storage
+            .from("photos")
+            .createSignedUrl(restoration.restored_image_path, 3600);
+
+          setState((prev) => ({
+            ...prev,
+            step: "success",
+            paymentStatus: "completed",
+            downloadUrls: {
+              png: pngUrl?.signedUrl || null,
+              pdf: pngUrl?.signedUrl || null,
+            },
+          }));
+        }
+      } else if (payment?.status === "rejected") {
+        setState((prev) => ({
+          ...prev,
+          paymentStatus: "idle",
+          paymentId: null,
+          error: "Votre dépôt a été rejeté. Veuillez réessayer.",
+        }));
+      }
+    } catch (error) {
+      console.error("Check payment status error:", error);
+    }
+  }, [state.paymentId, state.restorationId]);
 
   const downloadFile = useCallback((type: "png" | "pdf") => {
     const url = state.downloadUrls[type];
@@ -205,6 +268,8 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
       progress: 0,
       error: null,
       colorize: false,
+      paymentStatus: "idle",
+      paymentId: null,
     });
   }, []);
 
@@ -214,6 +279,7 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
         ...state,
         uploadPhoto,
         processPayment,
+        checkPaymentStatus,
         downloadFile,
         reset,
         setStep,

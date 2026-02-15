@@ -37,6 +37,7 @@ interface Payment {
   status: string;
   provider: string | null;
   restoration_id: string;
+  deposit_method?: string | null;
 }
 
 interface UserProfile {
@@ -86,7 +87,7 @@ const Admin = () => {
           .order("created_at", { ascending: false }),
         supabase
           .from("payments")
-          .select("id, created_at, amount, currency, status, provider, restoration_id")
+          .select("id, created_at, amount, currency, status, provider, restoration_id, deposit_method")
           .order("created_at", { ascending: false }),
         supabase
           .from("profiles")
@@ -380,6 +381,7 @@ const Admin = () => {
                 payments={payments}
                 isLoading={loadingData}
                 getUserForRestoration={getUserForRestoration}
+                onRefresh={fetchData}
               />
             </TabsContent>
 
