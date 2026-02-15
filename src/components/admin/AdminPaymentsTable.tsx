@@ -7,7 +7,7 @@ import {
 } from "@/components/ui/table";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
-import { CreditCard, Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { CreditCard, Loader2, CheckCircle2, XCircle, Copy } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -20,6 +20,7 @@ interface Payment {
   provider: string | null;
   restoration_id: string;
   deposit_method?: string | null;
+  sender_phone?: string | null;
 }
 
 interface AdminPaymentsTableProps {
@@ -73,6 +74,11 @@ export function AdminPaymentsTable({
     }
   };
 
+  const handleCopyPhone = (phone: string) => {
+    navigator.clipboard.writeText(phone);
+    toast({ title: "Numéro copié", description: phone });
+  };
+
   const getStatusBadge = (status: string) => {
     const config: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string }> = {
       completed: { variant: "default", label: "✅ Validé" },
@@ -118,6 +124,7 @@ export function AdminPaymentsTable({
                   <TableHead>Utilisateur</TableHead>
                   <TableHead>Montant</TableHead>
                   <TableHead>Méthode</TableHead>
+                  <TableHead>N° Expéditeur</TableHead>
                   <TableHead>Statut</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Actions</TableHead>
@@ -130,6 +137,23 @@ export function AdminPaymentsTable({
                     <TableCell className="max-w-[120px] truncate">{getUserForRestoration(payment.restoration_id)}</TableCell>
                     <TableCell className="font-medium">{payment.amount.toLocaleString("fr-FR")} {payment.currency}</TableCell>
                     <TableCell className="text-muted-foreground text-sm">{payment.deposit_method || payment.provider || "—"}</TableCell>
+                    <TableCell>
+                      {payment.sender_phone ? (
+                        <div className="flex items-center gap-1">
+                          <span className="text-sm font-mono">{payment.sender_phone}</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0"
+                            onClick={() => handleCopyPhone(payment.sender_phone!)}
+                          >
+                            <Copy className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">—</span>
+                      )}
+                    </TableCell>
                     <TableCell>{getStatusBadge(payment.status)}</TableCell>
                     <TableCell className="text-xs">
                       {format(new Date(payment.created_at), "dd MMM yyyy HH:mm", { locale: fr })}

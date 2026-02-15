@@ -43,7 +43,7 @@ function IndexContent() {
   const {
     step, progress, originalImageUrl, previewImageUrl, restoredImageUrl,
     downloadUrls, error, uploadPhoto, processPayment, checkPaymentStatus, downloadFile, reset, setStep,
-    paymentStatus, outputFormat, setOutputFormat,
+    paymentStatus, outputFormat, setOutputFormat, restorationId,
   } = useRestoration();
 
   const { toast } = useToast();
@@ -71,9 +71,9 @@ function IndexContent() {
   }, [paymentStatus, checkPaymentStatus]);
 
   const handlePhotoSelected = async (file: File) => { await uploadPhoto(file); };
-  const handlePayment = async (promoCode?: string, depositMethod?: string, subscriptionPlanId?: string) => {
+  const handlePayment = async (promoCode?: string, depositMethod?: string, subscriptionPlanId?: string, senderPhone?: string) => {
     setIsPaymentLoading(true);
-    await processPayment(promoCode, depositMethod, subscriptionPlanId);
+    await processPayment(promoCode, depositMethod, subscriptionPlanId, senderPhone);
     setIsPaymentLoading(false);
   };
   const handleDownloadPng = () => { if (downloadUrls.png) downloadFile("png"); toast({ title: "Téléchargement démarré", description: "Votre PNG HD est en cours de téléchargement..." }); };
@@ -330,7 +330,7 @@ function IndexContent() {
                   </div>
                 </div>
 
-                <PaymentSection onPayment={handlePayment} isLoading={isPaymentLoading} paymentStatus={paymentStatus} />
+                <PaymentSection onPayment={handlePayment} isLoading={isPaymentLoading} paymentStatus={paymentStatus} restorationId={restorationId} />
               </div>
             </motion.div>
           )}

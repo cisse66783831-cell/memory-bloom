@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Download, FileImage, FileText, Lock, Shield, Tag, Loader2, Clock, Phone, Copy, CheckCircle2, CreditCard, Sparkles } from "lucide-react";
+import { Check, Download, FileImage, FileText, Lock, Shield, Tag, Loader2, Clock, Phone, Copy, CheckCircle2, CreditCard, Sparkles, MessageCircle, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useValidatePromoCode } from "@/hooks/usePromoCode";
@@ -8,9 +8,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
 interface PaymentSectionProps {
-  onPayment: (promoCode?: string, depositMethod?: string, subscriptionPlanId?: string) => void;
+  onPayment: (promoCode?: string, depositMethod?: string, subscriptionPlanId?: string, senderPhone?: string) => void;
   isLoading?: boolean;
   paymentStatus?: "idle" | "pending" | "completed";
+  restorationId?: string | null;
 }
 
 const UNIT_PRICE = 1000;
@@ -36,7 +37,7 @@ interface SubscriptionPlan {
 
 type PricingTab = "unit" | "subscription";
 
-export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle" }: PaymentSectionProps) {
+export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle", restorationId }: PaymentSectionProps) {
   const [activeTab, setActiveTab] = useState<PricingTab>("unit");
   const [showPromoField, setShowPromoField] = useState(false);
   const [promoInput, setPromoInput] = useState("");
@@ -48,6 +49,7 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle" }:
   const [depositInstructions, setDepositInstructions] = useState<DepositInstruction[]>([]);
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [copiedNumber, setCopiedNumber] = useState<string | null>(null);
+  const [senderPhone, setSenderPhone] = useState("");
   const { toast } = useToast();
 
   const validatePromo = useValidatePromoCode();
@@ -99,6 +101,10 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle" }:
       toast({ title: "Choisissez un moyen de paiement", variant: "destructive" });
       return;
     }
+    if (!senderPhone.trim()) {
+      toast({ title: "Entrez le numéro utilisé pour le dépôt", variant: "destructive" });
+      return;
+    }
     if (activeTab === "subscription" && !selectedPlan) {
       toast({ title: "Choisissez un plan d'abonnement", variant: "destructive" });
       return;
@@ -106,7 +112,8 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle" }:
     onPayment(
       appliedCode || undefined,
       selectedMethod,
-      activeTab === "subscription" ? selectedPlan?.id : undefined
+      activeTab === "subscription" ? selectedPlan?.id : undefined,
+      senderPhone.trim(),
     );
   };
 
@@ -137,9 +144,40 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle" }:
           <p className="text-muted-foreground mb-4">
             Votre dépôt a été enregistré. Un administrateur va vérifier et valider votre paiement.
           </p>
-          <div className="flex items-center justify-center gap-2 text-sm text-primary">
+          <div className="flex items-center justify-center gap-2 text-sm text-primary mb-6">
             <Clock className="w-4 h-4" />
             <span>Vous serez notifié dès la validation</span>
+          </div>
+
+          {/* WhatsApp buttons in pending state too */}
+          <div className="flex flex-col gap-3">
+            <Button
+              asChild
+              className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold rounded-full"
+            >
+              <a
+                href={`https://wa.me/22666783831?text=${encodeURIComponent(`Bonjour, j'ai effectué un dépôt pour ma restauration photo. ID: ${restorationId || "N/A"}. Voici ma preuve de paiement :`)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <MessageCircle className="w-5 h-5 mr-2" />
+                Envoyer la preuve (Validation rapide)
+              </a>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              className="w-full rounded-full"
+            >
+              <a
+                href="https://chat.whatsapp.com/CUK9SFfWaDU6MEsbzjbNCg?mode=gi_t"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Users className="w-5 h-5 mr-2" />
+                Rejoindre la communauté
+              </a>
+            </Button>
           </div>
         </div>
       </motion.div>
@@ -357,45 +395,46 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle" }:
           </div>
         </div>
 
-        {/* Deposit details */}
+        {/* Deposit details - Static phone number */}
         <AnimatePresence>
           {selectedMethod && (
             <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mb-6">
-              {depositInstructions
-                .filter((m) => m.method_name === selectedMethod)
-                .map((method) => (
-                  <div key={method.id} className="bg-secondary/50 rounded-xl p-4 border border-border/30">
-                    <p className="text-sm text-foreground font-medium mb-2">Instructions :</p>
-                    {(
-                      <div className="flex items-center justify-between bg-background/50 rounded-lg p-3 mb-2">
-                        <div>
-                          <p className="text-xs text-muted-foreground">Numéro</p>
-                          <p className="text-foreground font-mono font-bold">+22666783831</p>
-                        </div>
-                        <Button variant="ghost" size="sm" onClick={() => handleCopyNumber("+22666783831")} className="h-8">
-                          {copiedNumber === "+22666783831" ? <CheckCircle2 className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
-                        </Button>
-                      </div>
-                    )}
-                    {method.account_name && (
-                      <p className="text-sm text-muted-foreground">Nom du compte : <span className="text-foreground font-medium">{method.account_name}</span></p>
-                    )}
-                    <p className="text-sm text-muted-foreground mt-2">
-                      Montant à envoyer : <span className="text-foreground font-bold">{finalPrice.toLocaleString()} F</span>
-                    </p>
-                    {method.instructions && (
-                      <p className="text-xs text-muted-foreground mt-2">{method.instructions}</p>
-                    )}
-                  </div>
-                ))}
+              <div className="bg-secondary/50 rounded-xl p-4 border border-border/30">
+                <p className="text-sm text-foreground font-medium mb-3">Envoyez le dépôt à ce numéro :</p>
+                <div className="flex items-center justify-between bg-background/50 rounded-lg p-4 mb-3">
+                  <p className="text-2xl font-bold text-foreground font-mono tracking-wide">+226 66 78 38 31</p>
+                  <Button variant="ghost" size="sm" onClick={() => handleCopyNumber("+22666783831")} className="h-8">
+                    {copiedNumber === "+22666783831" ? <CheckCircle2 className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
+                  </Button>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Montant à envoyer : <span className="text-foreground font-bold">{finalPrice.toLocaleString()} F</span>
+                </p>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
 
+        {/* Sender phone input */}
+        {selectedMethod && (
+          <div className="mb-6">
+            <label className="text-sm font-medium text-foreground mb-2 block">
+              Numéro utilisé pour le dépôt <span className="text-destructive">*</span>
+            </label>
+            <Input
+              type="tel"
+              placeholder="Ex: 66 78 38 31"
+              value={senderPhone}
+              onChange={(e) => setSenderPhone(e.target.value)}
+              className="bg-secondary/50 border-border/50"
+            />
+          </div>
+        )}
+
         {/* Confirm button */}
         <Button
           onClick={handleConfirmDeposit}
-          disabled={isLoading || !selectedMethod || (activeTab === "subscription" && !selectedPlan)}
+          disabled={isLoading || !selectedMethod || !senderPhone.trim() || (activeTab === "subscription" && !selectedPlan)}
           size="lg"
           className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-lg py-6 rounded-full shadow-gold"
         >
@@ -411,6 +450,37 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle" }:
             </>
           )}
         </Button>
+
+        {/* WhatsApp buttons */}
+        <div className="flex flex-col gap-3 mt-4">
+          <Button
+            asChild
+            className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold rounded-full"
+          >
+            <a
+              href={`https://wa.me/22666783831?text=${encodeURIComponent(`Bonjour, j'ai effectué un dépôt pour ma restauration photo. ID: ${restorationId || "N/A"}. Voici ma preuve de paiement :`)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <MessageCircle className="w-5 h-5 mr-2" />
+              Envoyer la preuve (Validation rapide)
+            </a>
+          </Button>
+          <Button
+            asChild
+            variant="outline"
+            className="w-full rounded-full"
+          >
+            <a
+              href="https://chat.whatsapp.com/CUK9SFfWaDU6MEsbzjbNCg?mode=gi_t"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Users className="w-5 h-5 mr-2" />
+              Rejoindre la communauté
+            </a>
+          </Button>
+        </div>
 
         <p className="text-center text-xs text-muted-foreground mt-4">
           Après votre dépôt, un administrateur validera le paiement

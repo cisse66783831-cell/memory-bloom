@@ -142,6 +142,7 @@ export type Database = {
           provider: string | null
           provider_reference: string | null
           restoration_id: string
+          sender_phone: string | null
           status: string
         }
         Insert: {
@@ -155,6 +156,7 @@ export type Database = {
           provider?: string | null
           provider_reference?: string | null
           restoration_id: string
+          sender_phone?: string | null
           status?: string
         }
         Update: {
@@ -168,6 +170,7 @@ export type Database = {
           provider?: string | null
           provider_reference?: string | null
           restoration_id?: string
+          sender_phone?: string | null
           status?: string
         }
         Relationships: [
@@ -189,6 +192,7 @@ export type Database = {
           payment_id: string | null
           pdf_path: string | null
           preview_image_path: string | null
+          replicate_prediction_id: string | null
           restored_image_path: string | null
           session_id: string
           status: string
@@ -203,6 +207,7 @@ export type Database = {
           payment_id?: string | null
           pdf_path?: string | null
           preview_image_path?: string | null
+          replicate_prediction_id?: string | null
           restored_image_path?: string | null
           session_id: string
           status?: string
@@ -217,6 +222,7 @@ export type Database = {
           payment_id?: string | null
           pdf_path?: string | null
           preview_image_path?: string | null
+          replicate_prediction_id?: string | null
           restored_image_path?: string | null
           session_id?: string
           status?: string

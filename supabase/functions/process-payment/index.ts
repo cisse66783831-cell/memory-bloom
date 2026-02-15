@@ -16,7 +16,7 @@ serve(async (req) => {
   }
 
   try {
-    const { restorationId, promoCode, depositMethod, subscriptionPlanId, action, paymentId, outputFormat = "match_input_image" } = await req.json();
+    const { restorationId, promoCode, depositMethod, subscriptionPlanId, action, paymentId, outputFormat = "match_input_image", senderPhone } = await req.json();
 
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -197,6 +197,7 @@ serve(async (req) => {
             status: "completed",
             provider: "subscription",
             provider_reference: activeSub.id,
+            sender_phone: senderPhone || null,
           })
           .select()
           .single();
@@ -328,7 +329,7 @@ serve(async (req) => {
 
     const finalAmount = Math.max(0, baseAmount - discountAmount);
 
-    // Create PENDING payment (awaiting admin validation)
+    // Create PENDING payment (awaiting admin validation) with sender_phone
     const { data: payment, error: paymentError } = await supabase
       .from("payments")
       .insert({
@@ -339,6 +340,7 @@ serve(async (req) => {
         provider: providerType,
         provider_reference: providerReference,
         deposit_method: depositMethod || null,
+        sender_phone: senderPhone || null,
       })
       .select()
       .single();
@@ -398,7 +400,8 @@ async function handleRewards(supabase: any, restoration: any, payment: any) {
     .eq("user_id", restoration.user_id)
     .single();
 
-  if (!buyerProfile?.referred_by_user_id || !buyerProfile.email_verified) return;
+  // REMOVED email_verified check - reward granted as soon as payment is validated
+  if (!buyerProfile?.referred_by_user_id) return;
 
   const { data: referrerProfile } = await supabase
     .from("profiles")
