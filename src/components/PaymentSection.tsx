@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { useValidatePromoCode } from "@/hooks/usePromoCode";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { useNavigate } from "react-router-dom";
 
 interface PaymentSectionProps {
   onPayment: (promoCode?: string, depositMethod?: string, subscriptionPlanId?: string, senderPhone?: string) => void;
@@ -38,6 +40,8 @@ interface SubscriptionPlan {
 type PricingTab = "unit" | "subscription";
 
 export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle", restorationId }: PaymentSectionProps) {
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<PricingTab>("unit");
   const [showPromoField, setShowPromoField] = useState(false);
   const [promoInput, setPromoInput] = useState("");
@@ -97,6 +101,11 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle", r
   };
 
   const handleConfirmDeposit = () => {
+    if (!user) {
+      toast({ title: "Veuillez vous connecter pour sauvegarder votre restauration avant de payer.", variant: "destructive" });
+      navigate("/auth");
+      return;
+    }
     if (!selectedMethod) {
       toast({ title: "Choisissez un moyen de paiement", variant: "destructive" });
       return;
