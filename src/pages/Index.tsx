@@ -52,10 +52,7 @@ function IndexContent() {
   const [isPaymentLoading, setIsPaymentLoading] = useState(false);
   const [showUploader, setShowUploader] = useState(false);
 
-  // Redirect authenticated users to dashboard
-  useEffect(() => {
-    if (user) navigate('/dashboard');
-  }, [user, navigate]);
+  // Authenticated users can access this page to upload new photos
 
   useEffect(() => {
     if (error) {
