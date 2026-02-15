@@ -58,12 +58,13 @@ serve(async (req) => {
         Prefer: "wait",
       },
       body: JSON.stringify({
-        model: "google/nano-banana-pro",
+        version: "f5318740f60d79bf0c480216aaf9ca7614977553170eacd19ff8cbcda2409ac8",
         input: {
           prompt: fullPrompt,
-          image: imageUrl,
-          aspect_ratio: "1:1",
+          image_input: [imageUrl],
+          aspect_ratio: "match_input_image",
           output_format: "png",
+          resolution: "2K",
         },
       }),
     });
