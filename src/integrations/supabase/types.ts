@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      deposit_instructions: {
+        Row: {
+          account_name: string | null
+          created_at: string
+          display_order: number
+          id: string
+          instructions: string | null
+          is_active: boolean
+          method_icon: string | null
+          method_name: string
+          phone_number: string | null
+        }
+        Insert: {
+          account_name?: string | null
+          created_at?: string
+          display_order?: number
+          id?: string
+          instructions?: string | null
+          is_active?: boolean
+          method_icon?: string | null
+          method_name: string
+          phone_number?: string | null
+        }
+        Update: {
+          account_name?: string | null
+          created_at?: string
+          display_order?: number
+          id?: string
+          instructions?: string | null
+          is_active?: boolean
+          method_icon?: string | null
+          method_name?: string
+          phone_number?: string | null
+        }
+        Relationships: []
+      }
       partner_commissions: {
         Row: {
           commission_amount: number
@@ -96,9 +132,12 @@ export type Database = {
       }
       payments: {
         Row: {
+          admin_validated_at: string | null
+          admin_validated_by: string | null
           amount: number
           created_at: string
           currency: string
+          deposit_method: string | null
           id: string
           provider: string | null
           provider_reference: string | null
@@ -106,9 +145,12 @@ export type Database = {
           status: string
         }
         Insert: {
+          admin_validated_at?: string | null
+          admin_validated_by?: string | null
           amount: number
           created_at?: string
           currency?: string
+          deposit_method?: string | null
           id?: string
           provider?: string | null
           provider_reference?: string | null
@@ -116,9 +158,12 @@ export type Database = {
           status?: string
         }
         Update: {
+          admin_validated_at?: string | null
+          admin_validated_by?: string | null
           amount?: number
           created_at?: string
           currency?: string
+          deposit_method?: string | null
           id?: string
           provider?: string | null
           provider_reference?: string | null
@@ -399,6 +444,42 @@ export type Database = {
           },
         ]
       }
+      subscription_plans: {
+        Row: {
+          created_at: string
+          description: string | null
+          duration_days: number
+          id: string
+          is_active: boolean
+          name: string
+          photo_count: number
+          price: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          duration_days?: number
+          id?: string
+          is_active?: boolean
+          name: string
+          photo_count: number
+          price: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          duration_days?: number
+          id?: string
+          is_active?: boolean
+          name?: string
+          photo_count?: number
+          price?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -419,6 +500,60 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      user_subscriptions: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          payment_id: string | null
+          photos_remaining: number
+          plan_id: string
+          starts_at: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at: string
+          id?: string
+          payment_id?: string | null
+          photos_remaining: number
+          plan_id: string
+          starts_at?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          payment_id?: string | null
+          photos_remaining?: number
+          plan_id?: string
+          starts_at?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_subscriptions_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_subscriptions_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "subscription_plans"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

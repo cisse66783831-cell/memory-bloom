@@ -6,8 +6,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const PARTNER_COMMISSION = 250; // Fixed 250 F CFA per payment
-const MAX_MONTHLY_FREE_GENERATIONS = 2; // Max free generation rewards per user per month
+const PARTNER_COMMISSION = 250;
+const MAX_MONTHLY_FREE_GENERATIONS = 2;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -15,8 +15,78 @@ serve(async (req) => {
   }
 
   try {
-    const { restorationId, promoCode } = await req.json();
+    const { restorationId, promoCode, depositMethod, action, paymentId } = await req.json();
 
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+
+    // === ADMIN VALIDATION ACTION ===
+    if (action === "validate" && paymentId) {
+      const { data: payment, error: fetchErr } = await supabase
+        .from("payments")
+        .select("*")
+        .eq("id", paymentId)
+        .single();
+
+      if (fetchErr || !payment) {
+        return new Response(
+          JSON.stringify({ error: "Payment not found" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      if (payment.status === "completed") {
+        return new Response(
+          JSON.stringify({ error: "Already validated" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Mark payment as completed
+      await supabase
+        .from("payments")
+        .update({ status: "completed", admin_validated_at: new Date().toISOString() })
+        .eq("id", paymentId);
+
+      // Mark restoration as paid
+      await supabase
+        .from("photo_restorations")
+        .update({ is_paid: true, payment_id: paymentId })
+        .eq("id", payment.restoration_id);
+
+      // Get restoration for download URLs
+      const { data: restoration } = await supabase
+        .from("photo_restorations")
+        .select("*")
+        .eq("id", payment.restoration_id)
+        .single();
+
+      // Handle referral/partner rewards
+      if (restoration?.user_id) {
+        await handleRewards(supabase, restoration, payment);
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, message: "Payment validated" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // === ADMIN REJECT ACTION ===
+    if (action === "reject" && paymentId) {
+      await supabase
+        .from("payments")
+        .update({ status: "rejected" })
+        .eq("id", paymentId);
+
+      return new Response(
+        JSON.stringify({ success: true, message: "Payment rejected" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // === CREATE PENDING PAYMENT (user deposit flow) ===
     if (!restorationId) {
       return new Response(
         JSON.stringify({ error: "Missing restorationId" }),
@@ -24,12 +94,6 @@ serve(async (req) => {
       );
     }
 
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
-    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-
-    const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
-
-    // Get the restoration record
     const { data: restoration, error: fetchError } = await supabase
       .from("photo_restorations")
       .select("*")
@@ -43,7 +107,6 @@ serve(async (req) => {
       );
     }
 
-    // Check if already paid
     if (restoration.is_paid) {
       return new Response(
         JSON.stringify({ error: "Already paid" }),
@@ -51,11 +114,71 @@ serve(async (req) => {
       );
     }
 
+    // Check for active subscription
+    if (restoration.user_id) {
+      const { data: activeSub } = await supabase
+        .from("user_subscriptions")
+        .select("*")
+        .eq("user_id", restoration.user_id)
+        .eq("status", "active")
+        .gt("expires_at", new Date().toISOString())
+        .gt("photos_remaining", 0)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
+
+      if (activeSub) {
+        // Use subscription credit
+        await supabase
+          .from("user_subscriptions")
+          .update({ photos_remaining: activeSub.photos_remaining - 1 })
+          .eq("id", activeSub.id);
+
+        // Create completed payment
+        const { data: payment } = await supabase
+          .from("payments")
+          .insert({
+            restoration_id: restorationId,
+            amount: 0,
+            currency: "XOF",
+            status: "completed",
+            provider: "subscription",
+            provider_reference: activeSub.id,
+          })
+          .select()
+          .single();
+
+        // Mark restoration as paid
+        await supabase
+          .from("photo_restorations")
+          .update({ is_paid: true, payment_id: payment?.id })
+          .eq("id", restorationId);
+
+        // Generate download URLs
+        const { data: pngUrl } = await supabase.storage
+          .from("photos")
+          .createSignedUrl(restoration.restored_image_path || "", 3600);
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            paymentMethod: "subscription",
+            status: "completed",
+            downloadUrls: {
+              png: pngUrl?.signedUrl,
+              pdf: pngUrl?.signedUrl,
+            },
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    // Calculate price with promo
     let baseAmount = 1000;
     let discountAmount = 0;
-    let appliedPromoCode = null;
+    let appliedPromoCode: any = null;
 
-    // PROMO CODE VALIDATION
     if (promoCode) {
       const { data: promo, error: promoError } = await supabase
         .from("promo_codes")
@@ -65,25 +188,19 @@ serve(async (req) => {
         .single();
 
       if (promo && !promoError) {
-        // Check if not expired
         const isExpired = promo.expires_at && new Date(promo.expires_at) < new Date();
-        
-        // Check usage limit
         const usageExceeded = promo.usage_limit && promo.usage_count >= promo.usage_limit;
-        
-        // Check if new users only
+
         let isNewUser = true;
         if (promo.new_users_only && restoration.user_id) {
-          const { count: previousPayments } = await supabase
+          const { count } = await supabase
             .from("photo_restorations")
             .select("*", { count: "exact", head: true })
             .eq("user_id", restoration.user_id)
             .eq("is_paid", true);
-          
-          isNewUser = (previousPayments || 0) === 0;
+          isNewUser = (count || 0) === 0;
         }
 
-        // Check if user already used this code
         let alreadyUsed = false;
         if (restoration.user_id) {
           const { data: existingUse } = await supabase
@@ -92,32 +209,28 @@ serve(async (req) => {
             .eq("promo_code_id", promo.id)
             .eq("user_id", restoration.user_id)
             .single();
-          
           alreadyUsed = !!existingUse;
         }
 
         if (!isExpired && !usageExceeded && isNewUser && !alreadyUsed) {
           discountAmount = promo.discount_amount;
           appliedPromoCode = promo;
-          console.log(`Promo code ${promoCode} applied: -${discountAmount} XOF`);
-        } else {
-          console.log(`Promo code ${promoCode} invalid: expired=${isExpired}, usage=${usageExceeded}, newUser=${isNewUser}, used=${alreadyUsed}`);
         }
       }
     }
 
     const finalAmount = Math.max(0, baseAmount - discountAmount);
 
-    // Create payment record
+    // Create PENDING payment (awaiting admin validation)
     const { data: payment, error: paymentError } = await supabase
       .from("payments")
       .insert({
         restoration_id: restorationId,
         amount: finalAmount,
         currency: "XOF",
-        status: "completed",
-        provider: "demo",
-        provider_reference: `demo_${Date.now()}`,
+        status: "pending",
+        provider: depositMethod || "deposit",
+        deposit_method: depositMethod || null,
       })
       .select()
       .single();
@@ -136,82 +249,27 @@ serve(async (req) => {
           user_id: restoration.user_id,
           payment_id: payment.id,
         });
-
-      // Increment usage count
       await supabase
         .from("promo_codes")
         .update({ usage_count: appliedPromoCode.usage_count + 1 })
         .eq("id", appliedPromoCode.id);
-
-      // If promo is linked to a partner, grant partner commission
-      if (appliedPromoCode.linked_partner_user_id) {
-        await grantPartnerCommission(supabase, appliedPromoCode.linked_partner_user_id, payment.id);
-      }
     }
 
-    // Update restoration as paid
+    // Update restoration with payment_id
     await supabase
       .from("photo_restorations")
-      .update({
-        is_paid: true,
-        payment_id: payment.id,
-      })
+      .update({ payment_id: payment.id })
       .eq("id", restorationId);
-
-    // REFERRAL & PARTNER REWARD LOGIC
-    if (restoration.user_id) {
-      const { data: buyerProfile } = await supabase
-        .from("profiles")
-        .select("referred_by_user_id, email_verified")
-        .eq("user_id", restoration.user_id)
-        .single();
-
-      if (buyerProfile?.referred_by_user_id) {
-        // Check if buyer has verified email
-        if (!buyerProfile.email_verified) {
-          console.log(`Referral reward skipped: buyer ${restoration.user_id} email not verified`);
-        } else {
-          // Get referrer profile
-          const { data: referrerProfile } = await supabase
-            .from("profiles")
-            .select("user_id, email_verified, free_generations_balance, is_partner, partner_commission_balance")
-            .eq("user_id", buyerProfile.referred_by_user_id)
-            .single();
-
-          if (referrerProfile) {
-            // Check if referrer is a partner
-            if (referrerProfile.is_partner) {
-              // PARTNER COMMISSION FLOW
-              await grantPartnerCommission(supabase, referrerProfile.user_id, payment.id);
-            } else {
-              // USER REFERRAL FLOW - Free generation reward
-              await grantUserReferralReward(
-                supabase, 
-                referrerProfile, 
-                buyerProfile.referred_by_user_id, 
-                restoration.user_id, 
-                payment.id
-              );
-            }
-          }
-        }
-      }
-    }
-
-    // Generate signed URLs for downloads
-    const { data: pngUrl } = await supabase.storage
-      .from("photos")
-      .createSignedUrl(restoration.restored_image_path, 3600);
 
     return new Response(
       JSON.stringify({
         success: true,
-        amountPaid: finalAmount,
+        paymentMethod: "deposit",
+        status: "pending",
+        paymentId: payment.id,
+        amountDue: finalAmount,
         discountApplied: discountAmount,
-        downloadUrls: {
-          png: pngUrl?.signedUrl,
-          pdf: pngUrl?.signedUrl,
-        },
+        message: "Votre dépôt est en attente de validation. Vous recevrez l'accès dès confirmation.",
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
@@ -225,101 +283,65 @@ serve(async (req) => {
   }
 });
 
-async function grantPartnerCommission(
-  supabase: any,
-  partnerUserId: string,
-  paymentId: string
-) {
-  const { data: existingCommission } = await supabase
-    .from("partner_commissions")
-    .select("id")
-    .eq("payment_id", paymentId)
+async function handleRewards(supabase: any, restoration: any, payment: any) {
+  const { data: buyerProfile } = await supabase
+    .from("profiles")
+    .select("referred_by_user_id, email_verified")
+    .eq("user_id", restoration.user_id)
     .single();
 
-  if (existingCommission) {
-    console.log(`Partner commission already granted for payment ${paymentId}`);
-    return;
-  }
+  if (!buyerProfile?.referred_by_user_id || !buyerProfile.email_verified) return;
 
-  const { data: partner } = await supabase
+  const { data: referrerProfile } = await supabase
     .from("profiles")
-    .select("partner_commission_balance")
-    .eq("user_id", partnerUserId)
+    .select("user_id, email_verified, free_generations_balance, is_partner, partner_commission_balance")
+    .eq("user_id", buyerProfile.referred_by_user_id)
     .single();
 
-  const newBalance = (partner?.partner_commission_balance || 0) + PARTNER_COMMISSION;
+  if (!referrerProfile) return;
 
-  await supabase
-    .from("profiles")
-    .update({ partner_commission_balance: newBalance })
-    .eq("user_id", partnerUserId);
+  if (referrerProfile.is_partner) {
+    // Partner commission
+    const { data: existing } = await supabase
+      .from("partner_commissions")
+      .select("id")
+      .eq("payment_id", payment.id)
+      .single();
 
-  await supabase
-    .from("partner_commissions")
-    .insert({
-      partner_user_id: partnerUserId,
-      payment_id: paymentId,
-      commission_amount: PARTNER_COMMISSION,
-      status: "pending",
-    });
+    if (!existing) {
+      const newBalance = (referrerProfile.partner_commission_balance || 0) + 250;
+      await supabase.from("profiles").update({ partner_commission_balance: newBalance }).eq("user_id", referrerProfile.user_id);
+      await supabase.from("partner_commissions").insert({
+        partner_user_id: referrerProfile.user_id,
+        payment_id: payment.id,
+        commission_amount: 250,
+        status: "pending",
+      });
+    }
+  } else if (referrerProfile.email_verified) {
+    // Free generation reward
+    const { data: existing } = await supabase
+      .from("referrals")
+      .select("id")
+      .eq("referred_user_id", restoration.user_id)
+      .eq("payment_id", payment.id)
+      .single();
 
-  console.log(`Partner commission granted to ${partnerUserId}: +${PARTNER_COMMISSION} XOF`);
-}
-
-async function grantUserReferralReward(
-  supabase: any,
-  referrerProfile: any,
-  referrerUserId: string,
-  referredUserId: string,
-  paymentId: string
-) {
-  const { data: existingReferral } = await supabase
-    .from("referrals")
-    .select("id")
-    .eq("referred_user_id", referredUserId)
-    .eq("payment_id", paymentId)
-    .single();
-
-  if (existingReferral) {
-    console.log(`Referral reward already granted for payment ${paymentId}`);
-    return;
+    if (!existing) {
+      const { data: monthlyCount } = await supabase.rpc("get_monthly_referral_reward_count", { p_user_id: referrerProfile.user_id });
+      const rewardAmount = (monthlyCount || 0) >= 2 ? 0 : 1;
+      if (rewardAmount > 0) {
+        await supabase.from("profiles")
+          .update({ free_generations_balance: (referrerProfile.free_generations_balance || 0) + 1 })
+          .eq("user_id", referrerProfile.user_id);
+      }
+      await supabase.from("referrals").insert({
+        referrer_user_id: referrerProfile.user_id,
+        referred_user_id: restoration.user_id,
+        payment_id: payment.id,
+        reward_type: "free_generation",
+        reward_amount: rewardAmount,
+      });
+    }
   }
-
-  if (!referrerProfile.email_verified) {
-    console.log(`Referral reward skipped: referrer ${referrerUserId} email not verified`);
-    return;
-  }
-
-  const { data: monthlyCount } = await supabase.rpc("get_monthly_referral_reward_count", {
-    p_user_id: referrerUserId,
-  });
-
-  if ((monthlyCount || 0) >= MAX_MONTHLY_FREE_GENERATIONS) {
-    console.log(`Referral reward skipped: referrer ${referrerUserId} reached monthly limit`);
-    await supabase.from("referrals").insert({
-      referrer_user_id: referrerUserId,
-      referred_user_id: referredUserId,
-      payment_id: paymentId,
-      reward_type: "free_generation",
-      reward_amount: 0,
-    });
-    return;
-  }
-
-  const newBalance = (referrerProfile.free_generations_balance || 0) + 1;
-
-  await supabase
-    .from("profiles")
-    .update({ free_generations_balance: newBalance })
-    .eq("user_id", referrerUserId);
-
-  await supabase.from("referrals").insert({
-    referrer_user_id: referrerUserId,
-    referred_user_id: referredUserId,
-    payment_id: paymentId,
-    reward_type: "free_generation",
-    reward_amount: 1,
-  });
-
-  console.log(`Referral reward granted to ${referrerUserId}: +1 free generation`);
 }
