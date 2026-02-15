@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Download, FileImage, FileText, Lock, Shield, Tag, Loader2, Clock, Phone, Copy, CheckCircle2, CreditCard, Sparkles, MessageCircle, Users } from "lucide-react";
+import { Check, Download, FileImage, FileText, Lock, Shield, Tag, Loader2, Clock, Phone, Copy, CheckCircle2, CreditCard, Sparkles, MessageCircle, Users, Mail, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useValidatePromoCode } from "@/hooks/usePromoCode";
@@ -40,7 +40,7 @@ interface SubscriptionPlan {
 type PricingTab = "unit" | "subscription";
 
 export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle", restorationId }: PaymentSectionProps) {
-  const { user } = useAuth();
+  const { user, signUp } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<PricingTab>("unit");
   const [showPromoField, setShowPromoField] = useState(false);
@@ -54,6 +54,9 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle", r
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [copiedNumber, setCopiedNumber] = useState<string | null>(null);
   const [senderPhone, setSenderPhone] = useState("");
+  const [signupEmail, setSignupEmail] = useState("");
+  const [signupPassword, setSignupPassword] = useState("");
+  const [signupLoading, setSignupLoading] = useState(false);
   const { toast } = useToast();
 
   const validatePromo = useValidatePromoCode();
@@ -100,12 +103,7 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle", r
     setTimeout(() => setCopiedNumber(null), 2000);
   };
 
-  const handleConfirmDeposit = () => {
-    if (!user) {
-      toast({ title: "Veuillez vous connecter pour sauvegarder votre restauration avant de payer.", variant: "destructive" });
-      navigate("/auth");
-      return;
-    }
+  const handleConfirmDeposit = async () => {
     if (!selectedMethod) {
       toast({ title: "Choisissez un moyen de paiement", variant: "destructive" });
       return;
@@ -118,12 +116,63 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle", r
       toast({ title: "Choisissez un plan d'abonnement", variant: "destructive" });
       return;
     }
+
+    // If user is not logged in, create account first
+    if (!user) {
+      if (!signupEmail.trim() || !signupPassword.trim()) {
+        toast({ title: "Entrez votre email et mot de passe pour créer votre compte", variant: "destructive" });
+        return;
+      }
+      if (signupPassword.length < 6) {
+        toast({ title: "Le mot de passe doit contenir au moins 6 caractères", variant: "destructive" });
+        return;
+      }
+
+      setSignupLoading(true);
+      try {
+        const { error: signUpError } = await signUp(signupEmail.trim(), signupPassword, {
+          firstName: "",
+          lastName: "",
+          phoneNumber: senderPhone.trim(),
+        });
+
+        if (signUpError) {
+          const msg = signUpError.message.includes("already registered")
+            ? "Cet email est déjà utilisé. Connectez-vous depuis la page de connexion."
+            : signUpError.message;
+          toast({ title: "Erreur d'inscription", description: msg, variant: "destructive" });
+          setSignupLoading(false);
+          return;
+        }
+
+        // Wait for auth state to update and get new user
+        const { data: { user: newUser } } = await supabase.auth.getUser();
+        
+        if (newUser && restorationId) {
+          // Claim the restoration for the new user
+          await supabase
+            .from("photo_restorations")
+            .update({ user_id: newUser.id })
+            .eq("id", restorationId);
+        }
+
+        setSignupLoading(false);
+      } catch (err) {
+        setSignupLoading(false);
+        toast({ title: "Erreur lors de la création du compte", variant: "destructive" });
+        return;
+      }
+    }
+
     onPayment(
       appliedCode || undefined,
       selectedMethod,
       activeTab === "subscription" ? selectedPlan?.id : undefined,
       senderPhone.trim(),
     );
+
+    // Redirect to dashboard after payment submission
+    setTimeout(() => navigate("/dashboard"), 1500);
   };
 
   const getMethodColor = (icon: string | null) => {
@@ -424,6 +473,53 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle", r
           )}
         </AnimatePresence>
 
+        {/* Inline signup fields for non-authenticated users */}
+        {selectedMethod && !user && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="mb-6">
+            <div className="bg-primary/5 rounded-xl p-4 border border-primary/20 mb-4">
+              <p className="text-sm font-medium text-foreground mb-1 flex items-center gap-2">
+                <KeyRound className="w-4 h-4 text-primary" />
+                Créez votre compte pour sécuriser votre photo
+              </p>
+              <p className="text-xs text-muted-foreground">Vous pourrez suivre votre restauration depuis votre espace personnel.</p>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="text-sm font-medium text-foreground mb-1.5 block">
+                  Email <span className="text-destructive">*</span>
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    type="email"
+                    placeholder="votre@email.com"
+                    value={signupEmail}
+                    onChange={(e) => setSignupEmail(e.target.value)}
+                    className="bg-secondary/50 border-border/50 pl-10"
+                    maxLength={255}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground mb-1.5 block">
+                  Mot de passe <span className="text-destructive">*</span>
+                </label>
+                <div className="relative">
+                  <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    type="password"
+                    placeholder="Minimum 6 caractères"
+                    value={signupPassword}
+                    onChange={(e) => setSignupPassword(e.target.value)}
+                    className="bg-secondary/50 border-border/50 pl-10"
+                    minLength={6}
+                  />
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
         {/* Sender phone input */}
         {selectedMethod && (
           <div className="mb-6">
@@ -443,14 +539,14 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle", r
         {/* Confirm button */}
         <Button
           onClick={handleConfirmDeposit}
-          disabled={isLoading || !selectedMethod || !senderPhone.trim() || (activeTab === "subscription" && !selectedPlan)}
+          disabled={isLoading || signupLoading || !selectedMethod || !senderPhone.trim() || (activeTab === "subscription" && !selectedPlan) || (!user && (!signupEmail.trim() || !signupPassword.trim()))}
           size="lg"
           className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-lg py-6 rounded-full shadow-gold"
         >
-          {isLoading ? (
+          {isLoading || signupLoading ? (
             <span className="flex items-center gap-2">
               <Loader2 className="w-5 h-5 animate-spin" />
-              Traitement en cours...
+              {signupLoading ? "Création du compte..." : "Traitement en cours..."}
             </span>
           ) : (
             <>
