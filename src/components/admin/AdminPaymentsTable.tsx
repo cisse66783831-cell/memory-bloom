@@ -133,7 +133,7 @@ export function AdminPaymentsTable({
               <TableBody>
                 {payments.map((payment) => (
                   <TableRow key={payment.id} className={payment.status === "pending" ? "bg-orange-500/5" : ""}>
-                    <TableCell className="font-mono text-xs">{payment.id.slice(0, 8)}...</TableCell>
+                    <TableCell className="font-mono text-xs whitespace-nowrap">{payment.id.slice(0, 8)}...</TableCell>
                     <TableCell className="max-w-[120px] truncate">{getUserForRestoration(payment.restoration_id)}</TableCell>
                     <TableCell className="font-medium">{payment.amount.toLocaleString("fr-FR")} {payment.currency}</TableCell>
                     <TableCell className="text-muted-foreground text-sm">{payment.deposit_method || payment.provider || "—"}</TableCell>
@@ -154,8 +154,8 @@ export function AdminPaymentsTable({
                         <span className="text-muted-foreground text-xs">—</span>
                       )}
                     </TableCell>
-                    <TableCell>{getStatusBadge(payment.status)}</TableCell>
-                    <TableCell className="text-xs">
+                    <TableCell className="whitespace-nowrap">{getStatusBadge(payment.status)}</TableCell>
+                    <TableCell className="text-xs whitespace-nowrap">
                       {format(new Date(payment.created_at), "dd MMM yyyy HH:mm", { locale: fr })}
                     </TableCell>
                     <TableCell>
