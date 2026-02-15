@@ -10,6 +10,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useProfile, useReferralStats, useResendVerificationEmail } from "@/hooks/useProfile";
 import { useToast } from "@/hooks/use-toast";
 import { DashboardStats } from "@/components/dashboard/DashboardStats";
+import { ActiveSubscription } from "@/components/dashboard/ActiveSubscription";
 import { PhotosSection } from "@/components/dashboard/PhotosSection";
 import { ReferralSection } from "@/components/dashboard/ReferralSection";
 import { PaymentsHistory } from "@/components/dashboard/PaymentsHistory";
@@ -152,12 +153,15 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
+          {/* Active Subscription */}
+          <ActiveSubscription />
+
           {/* Stats Cards */}
           <DashboardStats
             freeGenerations={profile?.free_generations_balance || 0}
             successfulReferrals={referralStats?.successfulReferrals || 0}
             generationsEarned={referralStats?.generationsEarned || 0}
-            generationsUsed={0} // TODO: Track usage
+            generationsUsed={0}
           />
 
           {/* Tabbed Content */}

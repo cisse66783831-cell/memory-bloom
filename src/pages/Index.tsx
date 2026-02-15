@@ -9,6 +9,7 @@ import { SuccessDownload } from "@/components/SuccessDownload";
 import { UpsellSection } from "@/components/UpsellSection";
 import { ExamplesGallery } from "@/components/ExamplesGallery";
 import { SocialShare } from "@/components/SocialShare";
+import { PricingPreview } from "@/components/PricingPreview";
 import { useRestoration, RestorationProvider } from "@/contexts/RestorationContext";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
@@ -61,9 +62,9 @@ function IndexContent() {
   }, [paymentStatus, checkPaymentStatus]);
 
   const handlePhotoSelected = async (file: File) => { await uploadPhoto(file); };
-  const handlePayment = async (promoCode?: string, depositMethod?: string) => {
+  const handlePayment = async (promoCode?: string, depositMethod?: string, subscriptionPlanId?: string) => {
     setIsPaymentLoading(true);
-    await processPayment(promoCode, depositMethod);
+    await processPayment(promoCode, depositMethod, subscriptionPlanId);
     setIsPaymentLoading(false);
   };
   const handleDownloadPng = () => { if (downloadUrls.png) downloadFile("png"); toast({ title: "Téléchargement démarré", description: "Votre PNG HD est en cours de téléchargement..." }); };
@@ -240,63 +241,7 @@ function IndexContent() {
 
               {/* PRICING PREVIEW */}
               {!showUploader && (
-                <section id="pricing" className="py-20 md:py-28">
-                  <div className="container">
-                    <motion.div {...fadeInUp} className="text-center mb-12">
-                      <div className="pill-badge mb-4 mx-auto">
-                        <span>Tarif simple</span>
-                      </div>
-                      <h2 className="font-heading text-3xl md:text-4xl text-foreground font-bold mb-4">
-                        Un prix, un souvenir restauré
-                      </h2>
-                    </motion.div>
-
-                    <motion.div {...fadeInUp} className="max-w-md mx-auto">
-                      <div className="glass-card p-8 md:p-10 text-center border-primary/20 shadow-glow">
-                        <div className="flex items-baseline justify-center gap-1 mb-6">
-                          <span className="font-heading text-5xl md:text-6xl text-foreground font-extrabold">1 000</span>
-                          <span className="text-2xl text-muted-foreground">F</span>
-                        </div>
-
-                        <div className="space-y-3 mb-8 text-left">
-                          {[
-                            { icon: Zap, text: "Fichier PNG haute résolution" },
-                            { icon: Download, text: "PDF prêt à imprimer" },
-                            { icon: Clock, text: "Résultat en moins de 2 minutes" },
-                            { icon: Shield, text: "Aperçu gratuit avant paiement" },
-                          ].map((f, i) => (
-                            <div key={i} className="flex items-center gap-3">
-                              <div className="w-7 h-7 rounded-full bg-success/10 flex items-center justify-center flex-shrink-0">
-                                <f.icon className="w-3.5 h-3.5 text-success" />
-                              </div>
-                              <span className="text-sm text-foreground">{f.text}</span>
-                            </div>
-                          ))}
-                        </div>
-
-                        <Button
-                          onClick={scrollToUploader}
-                          size="lg"
-                          className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-base py-6 rounded-full shadow-gold"
-                        >
-                          Commencer maintenant
-                          <ArrowRight className="w-5 h-5 ml-2" />
-                        </Button>
-
-                        <div className="mt-6 flex items-center justify-center gap-6 text-xs text-muted-foreground">
-                          <div className="flex items-center gap-1.5">
-                            <Shield className="w-3.5 h-3.5" />
-                            <span>Paiement sécurisé</span>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <Zap className="w-3.5 h-3.5" />
-                            <span>Accès immédiat</span>
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  </div>
-                </section>
+                <PricingPreview scrollToUploader={scrollToUploader} />
               )}
 
               {/* FAQ */}
