@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 serve(async (req) => {
@@ -21,12 +21,12 @@ serve(async (req) => {
       );
     }
 
-    const REPLICATE_API_TOKEN = Deno.env.get("REPLICATE_API_TOKEN");
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-    if (!REPLICATE_API_TOKEN) {
-      throw new Error("REPLICATE_API_TOKEN is not configured");
+    if (!LOVABLE_API_KEY) {
+      throw new Error("LOVABLE_API_KEY is not configured");
     }
 
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
@@ -37,66 +37,71 @@ serve(async (req) => {
       .update({ status: "processing" })
       .eq("id", restorationId);
 
-    // Prepare the image URL for Replicate
+    // Prepare the image data URL
     const imageUrl = imageBase64.startsWith("data:") ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`;
 
-    // Use GFPGAN for face restoration + Real-ESRGAN for upscaling
-    // Model: tencentarc/gfpgan (popular photo restoration model on Replicate)
-    const model = colorize 
-      ? "microsoft/bringing-old-photos-back-to-life:c75db81db6cbd809d93b27b0a856571e0e5696ad0f5e70be4e3cda3013a1c6c0"
-      : "tencentarc/gfpgan:0fbacf7afc6c144e5be9767cff80f25aff23e52b0708f17e20f9879b2f21516c";
+    // Build the restoration prompt
+    const basePrompt = "Increase the resolution of this image to 300 dpi, the standard for print. However, do not change anything else. Remove all edge imperfections and make the photo sharp and clear. Adjust the lighting and overall quality so it looks like it was taken with an iPhone 14 Pro Max camera — natural colors, precise details, balanced exposure, and professional-grade sharpness.";
+    const colorizePrompt = colorize 
+      ? " Also, colorize this photo naturally if it is black and white, using realistic and vivid colors appropriate to the era and subject."
+      : "";
+    const fullPrompt = basePrompt + colorizePrompt;
 
-    // Create a prediction on Replicate
-    const createResponse = await fetch("https://api.replicate.com/v1/predictions", {
+    console.log("Calling Lovable AI with Nano banana pro model...");
+
+    // Call Lovable AI Gateway with image editing (Nano banana pro)
+    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${REPLICATE_API_TOKEN}`,
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
-        Prefer: "wait",
       },
       body: JSON.stringify({
-        version: model.split(":")[1],
-        input: colorize 
-          ? { image: imageUrl, with_scratch: true }
-          : { img: imageUrl, version: "v1.4", scale: 2 },
+        model: "google/gemini-3-pro-image-preview",
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: fullPrompt },
+              { type: "image_url", image_url: { url: imageUrl } },
+            ],
+          },
+        ],
+        modalities: ["image", "text"],
       }),
     });
 
-    if (!createResponse.ok) {
-      const errorText = await createResponse.text();
-      console.error("Replicate API error:", createResponse.status, errorText);
-      throw new Error(`Replicate API error: ${createResponse.status} - ${errorText}`);
+    if (!aiResponse.ok) {
+      const errorText = await aiResponse.text();
+      console.error("Lovable AI error:", aiResponse.status, errorText);
+      
+      if (aiResponse.status === 429) {
+        throw new Error("Service temporarily busy, please try again in a moment.");
+      }
+      if (aiResponse.status === 402) {
+        throw new Error("AI credits exhausted. Please add credits to continue.");
+      }
+      throw new Error(`AI processing error: ${aiResponse.status}`);
     }
 
-    let prediction = await createResponse.json();
+    const aiResult = await aiResponse.json();
+    console.log("AI response received, extracting image...");
 
-    // If not using Prefer: wait, poll for completion
-    while (prediction.status !== "succeeded" && prediction.status !== "failed") {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      const pollResponse = await fetch(`https://api.replicate.com/v1/predictions/${prediction.id}`, {
-        headers: { Authorization: `Bearer ${REPLICATE_API_TOKEN}` },
-      });
-      prediction = await pollResponse.json();
+    // Extract the generated image from the response
+    const generatedImage = aiResult.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+
+    if (!generatedImage) {
+      console.error("No image in AI response:", JSON.stringify(aiResult).substring(0, 500));
+      throw new Error("No image returned from AI");
     }
 
-    if (prediction.status === "failed") {
-      console.error("Replicate prediction failed:", prediction.error);
-      throw new Error(`Restoration failed: ${prediction.error}`);
+    // Convert base64 data URL to binary buffer
+    const base64Data = generatedImage.replace(/^data:image\/\w+;base64,/, "");
+    const binaryString = atob(base64Data);
+    const imageBuffer = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      imageBuffer[i] = binaryString.charCodeAt(i);
     }
-
-    // Get the output image URL from Replicate
-    const outputUrl = Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
-    
-    if (!outputUrl) {
-      throw new Error("No image returned from Replicate");
-    }
-
-    // Download the restored image from Replicate
-    const imageResponse = await fetch(outputUrl);
-    if (!imageResponse.ok) {
-      throw new Error("Failed to download restored image from Replicate");
-    }
-    const imageBuffer = new Uint8Array(await imageResponse.arrayBuffer());
 
     // Store the restored image in Supabase storage
     const restoredPath = `restored/${restorationId}.png`;
@@ -133,7 +138,7 @@ serve(async (req) => {
       .eq("id", restorationId);
 
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         success: true,
         previewUrl: signedData.signedUrl,
       }),
