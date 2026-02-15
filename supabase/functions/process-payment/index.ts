@@ -16,7 +16,7 @@ serve(async (req) => {
   }
 
   try {
-    const { restorationId, promoCode, depositMethod, subscriptionPlanId, action, paymentId } = await req.json();
+    const { restorationId, promoCode, depositMethod, subscriptionPlanId, action, paymentId, outputResolution = "2K" } = await req.json();
 
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -101,6 +101,8 @@ serve(async (req) => {
               body: JSON.stringify({
                 restorationId: payment.restoration_id,
                 colorize: false,
+                previewMode: false,
+                resolution: outputResolution,
               }),
             }
           );
@@ -219,6 +221,8 @@ serve(async (req) => {
               body: JSON.stringify({
                 restorationId: restorationId,
                 colorize: false,
+                previewMode: false,
+                resolution: outputResolution,
               }),
             }
           );
