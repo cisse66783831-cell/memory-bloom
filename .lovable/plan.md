@@ -1,25 +1,37 @@
 
+## Plan de correction
 
-## Correction du bug "Restaurer une nouvelle photo ne foncait rien"
+### 1. Redirection "Restaurer une nouvelle photo"
 
-### Probleme identifie
+**Probleme** : Le bouton dans le Dashboard (`src/pages/Dashboard.tsx`, ligne 148) pointe vers `/` qui affiche la landing page complete. L'utilisateur doit scroller pour trouver la zone d'upload.
 
-Dans `src/pages/Index.tsx` (lignes 56-58), un `useEffect` redirige automatiquement tout utilisateur connecte vers `/dashboard`. Quand un utilisateur clique sur "Restaurer une nouvelle photo" depuis le dashboard (lien vers `/`), il est instantanement renvoye au dashboard.
+**Solution** : Changer le lien de `/` vers `/?restore=1` et ajouter dans `Index.tsx` une logique qui, si ce parametre est present, scrolle automatiquement vers la section d'upload (ou l'affiche directement via `setShowUploader(true)`).
 
-### Solution
+**Fichiers modifies** :
+- `src/pages/Dashboard.tsx` : Changer `<Link to="/">` en `<Link to="/?restore=1">`
+- `src/pages/Index.tsx` : Detecter le parametre `restore=1` dans l'URL et activer automatiquement `setShowUploader(true)` pour afficher directement l'uploader
 
-Modifier la logique de redirection pour permettre aux utilisateurs connectes d'acceder a la page d'upload quand ils le souhaitent. Deux options :
+### 2. Configurer l'administrateur
 
-**Option retenue** : Supprimer la redirection automatique dans `Index.tsx`. Les utilisateurs connectes verront la landing page normalement et pourront uploader des photos. La redirection vers le dashboard se fera uniquement depuis la page `/auth` apres connexion.
+**Probleme** : La table `user_roles` est vide. Aucun utilisateur n'a le role admin.
 
-### Changements techniques
+**Le seul utilisateur inscrit est** : **Issa Cisse** (cisse66783831@gmail.com, ID: `a7d402b4-c419-4ef6-a23e-af1ab5190305`)
 
-**Fichier : `src/pages/Index.tsx`**
-- Supprimer le `useEffect` de redirection (lignes 56-58) qui redirige les utilisateurs connectes vers `/dashboard`
-- L'import `useNavigate` et `useAuth` restent necessaires pour d'autres fonctionnalites
+**Solution** : Creer une migration SQL pour inserer ce compte comme admin :
 
-### Taches 1 et 2 (deja appliquees)
+```sql
+INSERT INTO public.user_roles (user_id, role)
+VALUES ('a7d402b4-c419-4ef6-a23e-af1ab5190305', 'admin');
+```
 
-- **Tache 1** (securiser le paiement) : deja en place dans `PaymentSection.tsx` avec la verification `useAuth` et redirection vers `/auth`
-- **Tache 2** (RLS photo_restorations) : migration SQL deja appliquee avec les policies INSERT/SELECT/UPDATE pour `authenticated`
+### Details techniques
 
+**`src/pages/Dashboard.tsx`** (ligne 148)
+- Remplacer `to="/"` par `to="/?restore=1"`
+
+**`src/pages/Index.tsx`** (apres ligne 55)
+- Ajouter `useSearchParams` de react-router-dom
+- Ajouter un `useEffect` qui detecte `searchParams.get("restore")` et appelle `setShowUploader(true)` si present
+
+**Migration SQL**
+- Inserer le role admin pour l'utilisateur Issa Cisse
