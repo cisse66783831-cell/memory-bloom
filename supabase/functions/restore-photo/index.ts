@@ -71,7 +71,7 @@ async function getModelForTrial(supabase: any, trialNumber: number, previewMode:
   return { replicateId: FALLBACK_VERSION, modelId: "microsoft", systemPrompt: null };
 }
 
-function buildModelInput(modelId: string, imageUrl: string, prompt: string, previewMode: boolean, aspectRatio: string, resolution: string): Record<string, any> {
+function buildModelInput(modelId: string, imageUrl: string, prompt: string, previewMode: boolean, aspectRatio: string, resolution: string, isComboStep = false): Record<string, any> {
   if (modelId === "nano-banana" || modelId === "nano-banana-pro" || modelId === "gemini-flash") {
     return {
       prompt,
@@ -86,11 +86,13 @@ function buildModelInput(modelId: string, imageUrl: string, prompt: string, prev
       output_format: "png",
     };
   } else if (modelId === "real-esrgan") {
-    return { image: imageUrl, scale: previewMode ? 2 : 4 };
+    // In combo mode, force scale=2 to avoid GPU memory overflow in subsequent models
+    const scale = isComboStep ? 2 : (previewMode ? 2 : 4);
+    return { image: imageUrl, scale };
   } else if (modelId === "gfpgan") {
     return { img: imageUrl, version: "v1.4", scale: previewMode ? 2 : 4 };
   } else if (modelId === "codeformer") {
-    return { image: imageUrl, codeformer_fidelity: 0.7, upscale: previewMode ? 1 : 2 };
+    return { image: imageUrl, codeformer_fidelity: 0.7, upscale: isComboStep ? 1 : (previewMode ? 1 : 2) };
   } else {
     return { image: imageUrl };
   }
@@ -111,11 +113,15 @@ async function resolveVersion(replicateId: string, apiToken: string): Promise<st
   return version;
 }
 
+const MAX_POLL_TIME = 120_000; // 2 minutes max
+
 async function runSingleModel(
   replicateId: string, modelId: string, modelInput: Record<string, any>,
-  apiToken: string, webhookUrl: string | undefined, useWebhook: boolean
+  apiToken: string, webhookUrl: string | undefined, useWebhook: boolean,
+  resolvedVersionHash?: string
 ): Promise<{ outputUrl: string; predictionId: string }> {
-  const version = await resolveVersion(replicateId, apiToken);
+  // Use pre-resolved version if provided, otherwise resolve
+  const version = resolvedVersionHash || await resolveVersion(replicateId, apiToken);
   const body: any = { version, input: modelInput };
 
   const headers: Record<string, string> = {
@@ -145,8 +151,12 @@ async function runSingleModel(
     return { outputUrl: "", predictionId: prediction.id };
   }
 
-  // Synchronous polling
+  // Synchronous polling with timeout
+  const startTime = Date.now();
   while (prediction.status !== "succeeded" && prediction.status !== "failed") {
+    if (Date.now() - startTime > MAX_POLL_TIME) {
+      throw new Error(`Prediction timed out after ${MAX_POLL_TIME / 1000} seconds for model ${modelId}`);
+    }
     await new Promise(resolve => setTimeout(resolve, 2000));
     const pollResponse = await fetch(`https://api.replicate.com/v1/predictions/${prediction.id}`, {
       headers: { Authorization: `Bearer ${apiToken}` },
@@ -167,8 +177,12 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let restorationId: string | undefined;
+  let supabase: any;
+
   try {
-    const { restorationId, imageBase64, colorize = false, previewMode = false, aspectRatio = "match_input_image", trialNumber = 1 } = await req.json();
+    const { restorationId: rid, imageBase64, colorize = false, previewMode = false, aspectRatio = "match_input_image", trialNumber = 1 } = await req.json();
+    restorationId = rid;
 
     if (!restorationId) {
       return new Response(
@@ -184,7 +198,7 @@ serve(async (req) => {
 
     if (!REPLICATE_API_TOKEN) throw new Error("REPLICATE_API_TOKEN is not configured");
 
-    const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+    supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
     // Update status
     await supabase
@@ -291,7 +305,8 @@ serve(async (req) => {
         }
 
         const stepPrompt = stepConfig.systemPrompt || (defaultPrompt + colorizeAddition);
-        const stepInput = buildModelInput(stepModelId, currentImageUrl, stepPrompt, previewMode, outputAspectRatio, outputResolution);
+        // isComboStep = true to limit upscale and avoid GPU memory overflow
+        const stepInput = buildModelInput(stepModelId, currentImageUrl, stepPrompt, previewMode, outputAspectRatio, outputResolution, true);
 
         console.log(`Combo step ${i + 1}/${pipelineSteps.length}: ${stepModelId}`);
 
@@ -348,11 +363,12 @@ serve(async (req) => {
     const fullPrompt = (modelConfig.systemPrompt || defaultPrompt) + colorizeAddition;
     const modelInput = buildModelInput(modelConfig.modelId, imageUrl, fullPrompt, previewMode, outputAspectRatio, outputResolution);
 
+    // Resolve version once for standard mode
     const resolvedVersion = await resolveVersion(modelConfig.replicateId, REPLICATE_API_TOKEN);
-    const replicateBody: any = { version: resolvedVersion, input: modelInput };
 
     // Non-preview: use webhook
     if (!previewMode && REPLICATE_WEBHOOK_URL) {
+      const replicateBody: any = { version: resolvedVersion, input: modelInput };
       replicateBody.webhook = REPLICATE_WEBHOOK_URL;
       replicateBody.webhook_events_filter = ["completed"];
 
@@ -382,8 +398,8 @@ serve(async (req) => {
       );
     }
 
-    // Preview: synchronous polling
-    const result = await runSingleModel(modelConfig.replicateId, modelConfig.modelId, modelInput, REPLICATE_API_TOKEN, undefined, false);
+    // Preview: synchronous polling — pass resolved version to avoid double resolve
+    const result = await runSingleModel(modelConfig.replicateId, modelConfig.modelId, modelInput, REPLICATE_API_TOKEN, undefined, false, resolvedVersion);
 
     const imageResponse = await fetch(result.outputUrl);
     if (!imageResponse.ok) throw new Error("Failed to download restored image");
@@ -417,6 +433,17 @@ serve(async (req) => {
 
   } catch (error) {
     console.error("Restore photo error:", error);
+
+    // FIX: Update status to "failed" so UI is not stuck on "processing"
+    if (restorationId && supabase) {
+      try {
+        await supabase
+          .from("photo_restorations")
+          .update({ status: "failed" })
+          .eq("id", restorationId);
+      } catch { /* ignore DB update error */ }
+    }
+
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
