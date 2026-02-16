@@ -8,9 +8,24 @@ const corsHeaders = {
 
 const FALLBACK_VERSION = "c75db81db6cbd809d93cc3b7e7a088a351a3349c9fa02b6d393e35e0d51ba799";
 
-async function getModelForTrial(supabase: any, trialNumber: number, previewMode: boolean): Promise<{ replicateId: string; modelId: string }> {
+interface ModelConfig {
+  replicateId: string;
+  modelId: string;
+  systemPrompt: string | null;
+}
+
+async function getModelConfig(supabase: any, modelId: string): Promise<ModelConfig | null> {
+  const { data: model } = await supabase
+    .from("ai_models_config")
+    .select("replicate_id, id, system_prompt")
+    .eq("id", modelId)
+    .single();
+  if (!model) return null;
+  return { replicateId: model.replicate_id, modelId: model.id, systemPrompt: model.system_prompt };
+}
+
+async function getModelForTrial(supabase: any, trialNumber: number, previewMode: boolean): Promise<ModelConfig> {
   try {
-    // Read management mode
     const { data: settings } = await supabase
       .from("app_settings")
       .select("key, value")
@@ -22,31 +37,24 @@ async function getModelForTrial(supabase: any, trialNumber: number, previewMode:
     const mode = settingsMap["ai_management_mode"] || "manual";
 
     if (mode === "manual") {
-      // Manual: use the model assigned to this trial/stage
       const settingKey = previewMode
         ? `trial_${Math.min(trialNumber, 3)}_model_id`
         : "final_hd_model_id";
       const modelId = settingsMap[settingKey];
 
       if (modelId) {
-        const { data: model } = await supabase
-          .from("ai_models_config")
-          .select("replicate_id, id")
-          .eq("id", modelId)
-          .single();
-
-        if (model) return { replicateId: model.replicate_id, modelId: model.id };
+        const config = await getModelConfig(supabase, modelId);
+        if (config) return config;
       }
     } else {
-      // Auto: best score with boost applied
       const { data: models } = await supabase
         .from("ai_models_config")
         .select("*")
         .eq("is_active", true)
+        .neq("id", "combo-model")
         .order("current_score", { ascending: false });
 
       if (models && models.length > 0) {
-        // Re-rank with boost
         const ranked = models
           .map((m: any) => ({
             ...m,
@@ -54,13 +62,91 @@ async function getModelForTrial(supabase: any, trialNumber: number, previewMode:
           }))
           .sort((a: any, b: any) => b.effective_score - a.effective_score);
 
-        return { replicateId: ranked[0].replicate_id, modelId: ranked[0].id };
+        return { replicateId: ranked[0].replicate_id, modelId: ranked[0].id, systemPrompt: ranked[0].system_prompt };
       }
     }
   } catch (err) {
     console.error("Error fetching model config, using fallback:", err);
   }
-  return { replicateId: FALLBACK_VERSION, modelId: "microsoft" };
+  return { replicateId: FALLBACK_VERSION, modelId: "microsoft", systemPrompt: null };
+}
+
+function buildModelInput(modelId: string, imageUrl: string, prompt: string, previewMode: boolean, aspectRatio: string, resolution: string): Record<string, any> {
+  if (modelId === "nano-banana" || modelId === "nano-banana-pro" || modelId === "gemini-flash") {
+    return {
+      prompt,
+      image_input: [imageUrl],
+      aspect_ratio: aspectRatio,
+      output_format: "png",
+      resolution,
+    };
+  } else if (modelId === "flux-restore") {
+    return {
+      prompt,
+      image_input: [imageUrl],
+      aspect_ratio: aspectRatio,
+      output_format: "png",
+      resolution,
+    };
+  } else if (modelId === "real-esrgan") {
+    return { image: imageUrl, scale: previewMode ? 2 : 4 };
+  } else if (modelId === "gfpgan") {
+    return { img: imageUrl, version: "v1.4", scale: previewMode ? 2 : 4 };
+  } else if (modelId === "codeformer") {
+    return { image: imageUrl, codeformer_fidelity: 0.7, upscale: previewMode ? 1 : 2 };
+  } else {
+    return { image: imageUrl };
+  }
+}
+
+async function runSingleModel(
+  replicateId: string, modelId: string, modelInput: Record<string, any>,
+  apiToken: string, webhookUrl: string | undefined, useWebhook: boolean
+): Promise<{ outputUrl: string; predictionId: string }> {
+  const body: any = { version: replicateId, input: modelInput };
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${apiToken}`,
+    "Content-Type": "application/json",
+  };
+
+  if (useWebhook && webhookUrl) {
+    body.webhook = webhookUrl;
+    body.webhook_events_filter = ["completed"];
+  } else {
+    headers["Prefer"] = "wait";
+  }
+
+  const createResponse = await fetch("https://api.replicate.com/v1/predictions", {
+    method: "POST", headers, body: JSON.stringify(body),
+  });
+
+  if (!createResponse.ok) {
+    const errorText = await createResponse.text();
+    throw new Error(`Replicate API error: ${createResponse.status} - ${errorText}`);
+  }
+
+  let prediction = await createResponse.json();
+
+  if (useWebhook && webhookUrl) {
+    return { outputUrl: "", predictionId: prediction.id };
+  }
+
+  // Synchronous polling
+  while (prediction.status !== "succeeded" && prediction.status !== "failed") {
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    const pollResponse = await fetch(`https://api.replicate.com/v1/predictions/${prediction.id}`, {
+      headers: { Authorization: `Bearer ${apiToken}` },
+    });
+    prediction = await pollResponse.json();
+  }
+
+  if (prediction.status === "failed") throw new Error(`Restoration failed: ${prediction.error}`);
+
+  const outputUrl = Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
+  if (!outputUrl) throw new Error("No image returned from Replicate");
+
+  return { outputUrl, predictionId: prediction.id };
 }
 
 serve(async (req) => {
@@ -94,13 +180,13 @@ serve(async (req) => {
       .eq("id", restorationId);
 
     // Get model dynamically
-    const { replicateId, modelId } = await getModelForTrial(supabase, trialNumber, previewMode);
-    console.log(`Using model: ${modelId} (${replicateId}) - trial ${trialNumber}, preview: ${previewMode}`);
+    const modelConfig = await getModelForTrial(supabase, trialNumber, previewMode);
+    console.log(`Using model: ${modelConfig.modelId} (${modelConfig.replicateId}) - trial ${trialNumber}, preview: ${previewMode}`);
 
     // Update used_model_id
     await supabase
       .from("photo_restorations")
-      .update({ used_model_id: modelId })
+      .update({ used_model_id: modelConfig.modelId })
       .eq("id", restorationId);
 
     // Increment total_runs
@@ -108,13 +194,13 @@ serve(async (req) => {
       const { data: m } = await supabase
         .from("ai_models_config")
         .select("total_runs")
-        .eq("id", modelId)
+        .eq("id", modelConfig.modelId)
         .single();
       if (m) {
         await supabase
           .from("ai_models_config")
           .update({ total_runs: (m.total_runs || 0) + 1 })
-          .eq("id", modelId);
+          .eq("id", modelConfig.modelId);
       }
     } catch (e) {
       console.warn("Could not increment total_runs:", e);
@@ -147,55 +233,99 @@ serve(async (req) => {
     const outputAspectRatio = previewMode ? "match_input_image" : aspectRatio;
     const outputResolution = previewMode ? "1K" : "2K";
 
-    const basePrompt = "Increase the resolution of this image to 300 dpi, the standard for print. However, do not change anything else. Remove all edge imperfections and make the photo sharp and clear. Adjust the lighting and overall quality so it looks like it was taken with an iPhone 14 Pro Max camera — natural colors, precise details, balanced exposure, and professional-grade sharpness.";
+    // Build prompt: use model's system_prompt if available, otherwise default
+    const defaultPrompt = "Increase the resolution of this image to 300 dpi, the standard for print. However, do not change anything else. Remove all edge imperfections and make the photo sharp and clear. Adjust the lighting and overall quality so it looks like it was taken with an iPhone 14 Pro Max camera — natural colors, precise details, balanced exposure, and professional-grade sharpness.";
     const colorizeAddition = colorize
       ? " Also, colorize this photo naturally if it is black and white, using realistic and vivid colors appropriate to the era and subject."
       : "";
-    const fullPrompt = basePrompt + colorizeAddition;
 
-    // Build model-specific input based on model ID
-    let modelInput: Record<string, any>;
+    // ==========================================
+    // MODE COMBO: Pipeline séquentiel
+    // ==========================================
+    if (modelConfig.modelId === "combo-model") {
+      console.log("🔥 COMBO MODE ACTIVATED");
 
-    if (modelId === "nano-banana" || modelId === "gemini-flash") {
-      // Flux/Gemini-style models: use image_input array + prompt
-      modelInput = {
-        prompt: fullPrompt,
-        image_input: [imageUrl],
-        aspect_ratio: outputAspectRatio,
-        output_format: "png",
-        resolution: outputResolution,
-      };
-    } else if (modelId === "real-esrgan") {
-      // Real-ESRGAN: just needs image, scale factor
-      modelInput = {
-        image: imageUrl,
-        scale: previewMode ? 2 : 4,
-      };
-    } else if (modelId === "gfpgan") {
-      // GFPGAN: image + version
-      modelInput = {
-        img: imageUrl,
-        version: "v1.4",
-        scale: previewMode ? 2 : 4,
-      };
-    } else if (modelId === "codeformer") {
-      // CodeFormer: image + fidelity
-      modelInput = {
-        image: imageUrl,
-        codeformer_fidelity: 0.7,
-        upscale: previewMode ? 1 : 2,
-      };
-    } else {
-      // Microsoft and fallback: uses "image" field
-      modelInput = {
-        image: imageUrl,
-      };
+      // Get pipeline steps from app_settings
+      const { data: comboSetting } = await supabase
+        .from("app_settings")
+        .select("value")
+        .eq("key", "combo_pipeline_steps")
+        .single();
+
+      let pipelineSteps: string[] = ["real-esrgan", "microsoft", "codeformer"];
+      if (comboSetting?.value) {
+        try { pipelineSteps = JSON.parse(comboSetting.value); } catch { /* use default */ }
+      }
+
+      console.log(`Combo pipeline: ${pipelineSteps.join(" → ")}`);
+      let currentImageUrl = imageUrl;
+
+      for (let i = 0; i < pipelineSteps.length; i++) {
+        const stepModelId = pipelineSteps[i];
+        const stepConfig = await getModelConfig(supabase, stepModelId);
+        if (!stepConfig) {
+          console.warn(`Combo step ${i + 1}: model '${stepModelId}' not found, skipping`);
+          continue;
+        }
+
+        const stepPrompt = stepConfig.systemPrompt || (defaultPrompt + colorizeAddition);
+        const stepInput = buildModelInput(stepModelId, currentImageUrl, stepPrompt, previewMode, outputAspectRatio, outputResolution);
+
+        console.log(`Combo step ${i + 1}/${pipelineSteps.length}: ${stepModelId}`);
+
+        const result = await runSingleModel(
+          stepConfig.replicateId, stepModelId, stepInput,
+          REPLICATE_API_TOKEN, REPLICATE_WEBHOOK_URL, false // always sync for combo
+        );
+
+        // Use the output as input for the next step
+        currentImageUrl = result.outputUrl;
+
+        // Increment runs for this step model
+        try {
+          const { data: sm } = await supabase.from("ai_models_config").select("total_runs").eq("id", stepModelId).single();
+          if (sm) await supabase.from("ai_models_config").update({ total_runs: (sm.total_runs || 0) + 1 }).eq("id", stepModelId);
+        } catch { /* ignore */ }
+      }
+
+      // Download final result and upload
+      const imageResponse = await fetch(currentImageUrl);
+      if (!imageResponse.ok) throw new Error("Failed to download combo result");
+      const imageBuffer = new Uint8Array(await imageResponse.arrayBuffer());
+
+      const storagePath = previewMode
+        ? `preview/${restorationId}_t${trialNumber}.png`
+        : `restored/${restorationId}.png`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("photos")
+        .upload(storagePath, imageBuffer, { contentType: "image/png", upsert: true });
+      if (uploadError) throw new Error("Failed to upload combo result");
+
+      const { data: signedData, error: signedError } = await supabase.storage
+        .from("photos")
+        .createSignedUrl(storagePath, 3600);
+      if (signedError || !signedData?.signedUrl) throw new Error("Failed to generate preview URL");
+
+      const updateData = previewMode
+        ? { status: "preview_ready", preview_image_path: storagePath }
+        : { status: "completed", restored_image_path: storagePath, preview_image_path: storagePath };
+
+      await supabase.from("photo_restorations").update(updateData).eq("id", restorationId);
+
+      return new Response(
+        JSON.stringify({ success: true, previewUrl: signedData.signedUrl, modelUsed: "combo-model", pipelineSteps }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    const replicateBody: any = {
-      version: replicateId,
-      input: modelInput,
-    };
+    // ==========================================
+    // MODE STANDARD: Single model
+    // ==========================================
+    const fullPrompt = (modelConfig.systemPrompt || defaultPrompt) + colorizeAddition;
+    const modelInput = buildModelInput(modelConfig.modelId, imageUrl, fullPrompt, previewMode, outputAspectRatio, outputResolution);
+
+    const replicateBody: any = { version: modelConfig.replicateId, input: modelInput };
 
     // Non-preview: use webhook
     if (!previewMode && REPLICATE_WEBHOOK_URL) {
@@ -229,37 +359,9 @@ serve(async (req) => {
     }
 
     // Preview: synchronous polling
-    const createResponse = await fetch("https://api.replicate.com/v1/predictions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${REPLICATE_API_TOKEN}`,
-        "Content-Type": "application/json",
-        Prefer: "wait",
-      },
-      body: JSON.stringify(replicateBody),
-    });
+    const result = await runSingleModel(modelConfig.replicateId, modelConfig.modelId, modelInput, REPLICATE_API_TOKEN, undefined, false);
 
-    if (!createResponse.ok) {
-      const errorText = await createResponse.text();
-      throw new Error(`Replicate API error: ${createResponse.status} - ${errorText}`);
-    }
-
-    let prediction = await createResponse.json();
-
-    while (prediction.status !== "succeeded" && prediction.status !== "failed") {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      const pollResponse = await fetch(`https://api.replicate.com/v1/predictions/${prediction.id}`, {
-        headers: { Authorization: `Bearer ${REPLICATE_API_TOKEN}` },
-      });
-      prediction = await pollResponse.json();
-    }
-
-    if (prediction.status === "failed") throw new Error(`Restoration failed: ${prediction.error}`);
-
-    const outputUrl = Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
-    if (!outputUrl) throw new Error("No image returned from Replicate");
-
-    const imageResponse = await fetch(outputUrl);
+    const imageResponse = await fetch(result.outputUrl);
     if (!imageResponse.ok) throw new Error("Failed to download restored image");
     const imageBuffer = new Uint8Array(await imageResponse.arrayBuffer());
 
@@ -270,29 +372,21 @@ serve(async (req) => {
     const { error: uploadError } = await supabase.storage
       .from("photos")
       .upload(storagePath, imageBuffer, { contentType: "image/png", upsert: true });
-
     if (uploadError) throw new Error("Failed to upload restored image");
 
     const { data: signedData, error: signedError } = await supabase.storage
       .from("photos")
       .createSignedUrl(storagePath, 3600);
-
     if (signedError || !signedData?.signedUrl) throw new Error("Failed to generate preview URL");
 
-    if (previewMode) {
-      await supabase
-        .from("photo_restorations")
-        .update({ status: "preview_ready", preview_image_path: storagePath })
-        .eq("id", restorationId);
-    } else {
-      await supabase
-        .from("photo_restorations")
-        .update({ status: "completed", restored_image_path: storagePath, preview_image_path: storagePath })
-        .eq("id", restorationId);
-    }
+    const updateData = previewMode
+      ? { status: "preview_ready", preview_image_path: storagePath }
+      : { status: "completed", restored_image_path: storagePath, preview_image_path: storagePath };
+
+    await supabase.from("photo_restorations").update(updateData).eq("id", restorationId);
 
     return new Response(
-      JSON.stringify({ success: true, previewUrl: signedData.signedUrl, modelUsed: modelId }),
+      JSON.stringify({ success: true, previewUrl: signedData.signedUrl, modelUsed: modelConfig.modelId }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 

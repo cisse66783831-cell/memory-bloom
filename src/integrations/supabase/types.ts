@@ -27,6 +27,7 @@ export type Database = {
           name: string
           replicate_id: string
           status: string
+          system_prompt: string | null
           total_runs: number
           updated_at: string
         }
@@ -42,6 +43,7 @@ export type Database = {
           name: string
           replicate_id: string
           status?: string
+          system_prompt?: string | null
           total_runs?: number
           updated_at?: string
         }
@@ -57,6 +59,7 @@ export type Database = {
           name?: string
           replicate_id?: string
           status?: string
+          system_prompt?: string | null
           total_runs?: number
           updated_at?: string
         }
