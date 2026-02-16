@@ -72,7 +72,14 @@ async function getModelForTrial(supabase: any, trialNumber: number, previewMode:
 }
 
 function buildModelInput(modelId: string, imageUrl: string, prompt: string, previewMode: boolean, aspectRatio: string, resolution: string, isComboStep = false): Record<string, any> {
-  if (modelId === "nano-banana" || modelId === "nano-banana-pro" || modelId === "gemini-flash") {
+  if (modelId === "flux-kontext") {
+    // Flux Kontext uses "input_image" (string) + safety_tolerance
+    return {
+      input_image: imageUrl,
+      output_format: "png",
+      safety_tolerance: 2,
+    };
+  } else if (modelId === "nano-banana" || modelId === "nano-banana-pro" || modelId === "gemini-flash") {
     return {
       prompt,
       image_input: [imageUrl],
@@ -86,7 +93,6 @@ function buildModelInput(modelId: string, imageUrl: string, prompt: string, prev
       output_format: "png",
     };
   } else if (modelId === "real-esrgan") {
-    // In combo mode, force scale=2 to avoid GPU memory overflow in subsequent models
     const scale = isComboStep ? 2 : (previewMode ? 2 : 4);
     return { image: imageUrl, scale };
   } else if (modelId === "gfpgan") {
@@ -94,6 +100,7 @@ function buildModelInput(modelId: string, imageUrl: string, prompt: string, prev
   } else if (modelId === "codeformer") {
     return { image: imageUrl, codeformer_fidelity: 0.7, upscale: isComboStep ? 1 : (previewMode ? 1 : 2) };
   } else {
+    // microsoft and others: standard "image" field
     return { image: imageUrl };
   }
 }

@@ -29,7 +29,8 @@ interface Photo {
   user_rating: number | null;
 }
 
-const WHATSAPP_NUMBER = "22891234567";
+const WHATSAPP_NUMBER = "22666783831";
+const MAX_TRIALS = 2;
 
 function StarRating({ rating }: { rating: number | null }) {
   if (rating === null) return null;
@@ -127,7 +128,7 @@ export const PhotosSection = forwardRef<HTMLDivElement>(function PhotosSection(_
 
   const openWhatsApp = (photoId: string) => {
     const message = encodeURIComponent(
-      `Bonjour, j'ai besoin d'aide pour ma restauration photo (ID: ${photoId}). Mes 3 essais gratuits n'ont pas donné un résultat satisfaisant.`
+      `Bonjour Admin, je suis bloqué sur la photo ${photoId.slice(0, 8)}. Aidez-moi svp.`
     );
     window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${message}`, "_blank");
   };
@@ -171,7 +172,10 @@ export const PhotosSection = forwardRef<HTMLDivElement>(function PhotosSection(_
   }
 
   const isFailed = (photo: Photo) =>
-    photo.status === "failed" || (photo.trial_number >= 3 && photo.user_rating !== null && photo.user_rating <= 3 && !photo.is_paid);
+    photo.status === "failed" || (photo.trial_number >= MAX_TRIALS && photo.user_rating !== null && photo.user_rating <= 3 && !photo.is_paid);
+
+  const showWhatsApp = (photo: Photo) =>
+    !photo.is_paid && (photo.trial_number >= MAX_TRIALS || photo.status === "failed");
 
   return (
     <>
@@ -219,12 +223,36 @@ export const PhotosSection = forwardRef<HTMLDivElement>(function PhotosSection(_
                         <span className="text-xs text-muted-foreground relative z-10">IA au travail...</span>
                       </div>
                     ) : thumbnails[photo.id] ? (
-                      <img
-                        src={thumbnails[photo.id]}
-                        alt="Photo restaurée"
-                        className="w-full h-full object-cover"
-                        loading="lazy"
-                      />
+                      <>
+                        <img
+                          src={thumbnails[photo.id]}
+                          alt="Photo restaurée"
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                          onContextMenu={(e) => !photo.is_paid && e.preventDefault()}
+                        />
+                        {/* Watermark REVIVO on unpaid photos */}
+                        {!photo.is_paid && (photo.status === "preview_ready" || photo.status === "completed") && (
+                          <div
+                            className="absolute inset-0 z-10 flex flex-col items-center justify-center pointer-events-none select-none overflow-hidden"
+                            onContextMenu={(e) => e.preventDefault()}
+                          >
+                            {[0, 1, 2].map((row) => (
+                              <div key={row} className="flex gap-8 my-4 -rotate-30">
+                                {[0, 1, 2].map((col) => (
+                                  <span
+                                    key={col}
+                                    className="text-3xl font-black tracking-widest text-foreground/25 whitespace-nowrap"
+                                    style={{ textShadow: "0 1px 4px rgba(0,0,0,0.15)" }}
+                                  >
+                                    REVIVO
+                                  </span>
+                                ))}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
                     ) : (
                       <div className="absolute inset-0 flex items-center justify-center">
                         <ImageOff className="h-8 w-8 text-muted-foreground/40" />
@@ -294,6 +322,19 @@ export const PhotosSection = forwardRef<HTMLDivElement>(function PhotosSection(_
                       >
                         <MessageCircle className="h-4 w-4 mr-1.5" />
                         Contacter l'Expert
+                      </Button>
+                    )}
+
+                    {/* WhatsApp button for exhausted trials (not failed, not paid) */}
+                    {!failed && showWhatsApp(photo) && !isProcessing && (
+                      <Button
+                        className="w-full"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openWhatsApp(photo.id)}
+                      >
+                        <MessageCircle className="h-4 w-4 mr-1.5 text-green-500" />
+                        Pas satisfait ? Confier à l'Expert
                       </Button>
                     )}
                   </div>
