@@ -293,9 +293,10 @@ serve(async (req) => {
       if (!imageResponse.ok) throw new Error("Failed to download combo result");
       const imageBuffer = new Uint8Array(await imageResponse.arrayBuffer());
 
+      const dateFolder = new Date().toISOString().slice(0, 10);
       const storagePath = previewMode
-        ? `preview/${restorationId}_t${trialNumber}.png`
-        : `restored/${restorationId}.png`;
+        ? `preview/${dateFolder}/${restorationId}_t${trialNumber}.png`
+        : `restored/${dateFolder}/${restorationId}.png`;
 
       const { error: uploadError } = await supabase.storage
         .from("photos")
@@ -365,9 +366,10 @@ serve(async (req) => {
     if (!imageResponse.ok) throw new Error("Failed to download restored image");
     const imageBuffer = new Uint8Array(await imageResponse.arrayBuffer());
 
+    const dateFolder = new Date().toISOString().slice(0, 10);
     const storagePath = previewMode
-      ? `preview/${restorationId}_t${trialNumber}.png`
-      : `restored/${restorationId}.png`;
+      ? `preview/${dateFolder}/${restorationId}_t${trialNumber}.png`
+      : `restored/${dateFolder}/${restorationId}.png`;
 
     const { error: uploadError } = await supabase.storage
       .from("photos")
