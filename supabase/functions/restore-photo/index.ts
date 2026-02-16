@@ -82,11 +82,8 @@ function buildModelInput(modelId: string, imageUrl: string, prompt: string, prev
     };
   } else if (modelId === "flux-restore") {
     return {
-      prompt,
-      image_input: [imageUrl],
-      aspect_ratio: aspectRatio,
+      input_image: imageUrl,
       output_format: "png",
-      resolution,
     };
   } else if (modelId === "real-esrgan") {
     return { image: imageUrl, scale: previewMode ? 2 : 4 };
