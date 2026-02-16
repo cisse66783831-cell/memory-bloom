@@ -24,7 +24,7 @@ serve(async (req) => {
       .single();
 
     if (setting?.value !== "auto") {
-      console.log("Mode is manual, skipping optimization.");
+      await supabase.from("optimization_logs").insert({ message: "Mode manuel détecté. Optimisation ignorée." });
       return new Response(
         JSON.stringify({ message: "Manual mode, no optimization performed." }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -45,6 +45,8 @@ serve(async (req) => {
       );
     }
 
+    const logs: string[] = [];
+
     // Recalculate scores
     for (const model of models) {
       const avgRating = Number(model.avg_rating) || 0;
@@ -52,7 +54,7 @@ serve(async (req) => {
 
       let finalScore = (avgRating * 0.7) + (conversionRate * 0.3);
       if (model.admin_boost) {
-        finalScore *= 1.2; // 20% bonus
+        finalScore *= 1.2;
       }
 
       await supabase
@@ -60,11 +62,36 @@ serve(async (req) => {
         .update({ current_score: finalScore })
         .eq("id", model.id);
 
-      console.log(`Model ${model.name}: score=${finalScore.toFixed(3)} (boost=${model.admin_boost})`);
+      const logMsg = `${model.name}: score=${finalScore.toFixed(3)} (boost=${model.admin_boost}, runs=${model.total_runs})`;
+      logs.push(logMsg);
+      console.log(logMsg);
     }
 
+    // Find best model and mark as active champion
+    const bestModel = models.reduce((best, m) => {
+      const score = m.admin_boost ? (Number(m.avg_rating) * 0.7 + Number(m.conversion_rate) * 0.3) * 1.2 : Number(m.avg_rating) * 0.7 + Number(m.conversion_rate) * 0.3;
+      const bestScore = best.admin_boost ? (Number(best.avg_rating) * 0.7 + Number(best.conversion_rate) * 0.3) * 1.2 : Number(best.avg_rating) * 0.7 + Number(best.conversion_rate) * 0.3;
+      return score > bestScore ? m : best;
+    });
+
+    // Update statuses
+    for (const model of models) {
+      await supabase
+        .from("ai_models_config")
+        .update({ status: model.id === bestModel.id ? "active" : "challenger" })
+        .eq("id", model.id);
+    }
+
+    const summary = `Optimisation terminée: ${models.length} modèles évalués. Champion: ${bestModel.name}`;
+    logs.push(summary);
+
+    // Save logs
+    await supabase.from("optimization_logs").insert(
+      logs.map(msg => ({ message: msg }))
+    );
+
     return new Response(
-      JSON.stringify({ message: `Optimized ${models.length} models.` }),
+      JSON.stringify({ message: summary, logs }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {

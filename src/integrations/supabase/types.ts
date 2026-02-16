@@ -19,13 +19,14 @@ export type Database = {
           admin_boost: boolean
           avg_rating: number
           conversion_rate: number
+          cost_per_run: number
           created_at: string
           current_score: number
           id: string
           is_active: boolean
           name: string
-          replicate_version: string
-          stage: string
+          replicate_id: string
+          status: string
           total_runs: number
           updated_at: string
         }
@@ -33,13 +34,14 @@ export type Database = {
           admin_boost?: boolean
           avg_rating?: number
           conversion_rate?: number
+          cost_per_run?: number
           created_at?: string
           current_score?: number
-          id?: string
+          id: string
           is_active?: boolean
           name: string
-          replicate_version: string
-          stage?: string
+          replicate_id: string
+          status?: string
           total_runs?: number
           updated_at?: string
         }
@@ -47,13 +49,14 @@ export type Database = {
           admin_boost?: boolean
           avg_rating?: number
           conversion_rate?: number
+          cost_per_run?: number
           created_at?: string
           current_score?: number
           id?: string
           is_active?: boolean
           name?: string
-          replicate_version?: string
-          stage?: string
+          replicate_id?: string
+          status?: string
           total_runs?: number
           updated_at?: string
         }
@@ -110,6 +113,24 @@ export type Database = {
           method_icon?: string | null
           method_name?: string
           phone_number?: string | null
+        }
+        Relationships: []
+      }
+      optimization_logs: {
+        Row: {
+          created_at: string
+          id: string
+          message: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message?: string
         }
         Relationships: []
       }
@@ -259,8 +280,11 @@ export type Database = {
           restored_image_path: string | null
           session_id: string
           status: string
+          trial_number: number
           updated_at: string
+          used_model_id: string | null
           user_id: string | null
+          user_rating: number | null
         }
         Insert: {
           created_at?: string
@@ -274,8 +298,11 @@ export type Database = {
           restored_image_path?: string | null
           session_id: string
           status?: string
+          trial_number?: number
           updated_at?: string
+          used_model_id?: string | null
           user_id?: string | null
+          user_rating?: number | null
         }
         Update: {
           created_at?: string
@@ -289,8 +316,11 @@ export type Database = {
           restored_image_path?: string | null
           session_id?: string
           status?: string
+          trial_number?: number
           updated_at?: string
+          used_model_id?: string | null
           user_id?: string | null
+          user_rating?: number | null
         }
         Relationships: []
       }

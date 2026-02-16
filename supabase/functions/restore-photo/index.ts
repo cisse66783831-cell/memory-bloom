@@ -6,60 +6,61 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const FALLBACK_VERSION = "f5318740f60d79bf0c480216aaf9ca7614977553170eacd19ff8cbcda2409ac8";
+const FALLBACK_VERSION = "c75db81db6cbd809d93cc3b7e7a088a351a3349c9fa02b6d393e35e0d51ba799";
 
-async function getModelVersion(supabase: any, stage: string): Promise<string> {
+async function getModelForTrial(supabase: any, trialNumber: number, previewMode: boolean): Promise<{ replicateId: string; modelId: string }> {
   try {
-    // 1. Read management mode
-    const { data: setting } = await supabase
+    // Read management mode
+    const { data: settings } = await supabase
       .from("app_settings")
-      .select("value")
-      .eq("key", "ai_management_mode")
-      .single();
+      .select("key, value")
+      .in("key", ["ai_management_mode", "trial_1_model_id", "trial_2_model_id", "trial_3_model_id", "final_hd_model_id"]);
 
-    const mode = setting?.value || "manual";
+    const settingsMap: Record<string, string> = {};
+    for (const s of settings || []) settingsMap[s.key] = s.value;
 
-    if (mode === "auto") {
-      // Auto mode: best score for matching stage
-      const { data: models } = await supabase
-        .from("ai_models_config")
-        .select("replicate_version, id")
-        .eq("is_active", true)
-        .or(`stage.eq.${stage},stage.eq.all`)
-        .order("current_score", { ascending: false })
-        .limit(1);
+    const mode = settingsMap["ai_management_mode"] || "manual";
 
-      if (models && models.length > 0) {
-        // Increment total_runs
-        await supabase.rpc("increment_model_runs_noop").catch(() => {
-          // If RPC doesn't exist, do manual update
-          supabase.from("ai_models_config").update({ total_runs: models[0].total_runs + 1 }).eq("id", models[0].id);
-        });
-        await supabase.from("ai_models_config").update({}).eq("id", models[0].id); // trigger updated_at
-        return models[0].replicate_version;
+    if (mode === "manual") {
+      // Manual: use the model assigned to this trial/stage
+      const settingKey = previewMode
+        ? `trial_${Math.min(trialNumber, 3)}_model_id`
+        : "final_hd_model_id";
+      const modelId = settingsMap[settingKey];
+
+      if (modelId) {
+        const { data: model } = await supabase
+          .from("ai_models_config")
+          .select("replicate_id, id")
+          .eq("id", modelId)
+          .single();
+
+        if (model) return { replicateId: model.replicate_id, modelId: model.id };
       }
     } else {
-      // Manual mode: first active model for matching stage
+      // Auto: best score with boost applied
       const { data: models } = await supabase
         .from("ai_models_config")
-        .select("replicate_version, id, total_runs")
+        .select("*")
         .eq("is_active", true)
-        .or(`stage.eq.${stage},stage.eq.all`)
-        .limit(1);
+        .order("current_score", { ascending: false });
 
       if (models && models.length > 0) {
-        // Increment total_runs
-        await supabase
-          .from("ai_models_config")
-          .update({ total_runs: (models[0].total_runs || 0) + 1 })
-          .eq("id", models[0].id);
-        return models[0].replicate_version;
+        // Re-rank with boost
+        const ranked = models
+          .map((m: any) => ({
+            ...m,
+            effective_score: m.admin_boost ? m.current_score * 1.2 : m.current_score,
+          }))
+          .sort((a: any, b: any) => b.effective_score - a.effective_score);
+
+        return { replicateId: ranked[0].replicate_id, modelId: ranked[0].id };
       }
     }
   } catch (err) {
     console.error("Error fetching model config, using fallback:", err);
   }
-  return FALLBACK_VERSION;
+  return { replicateId: FALLBACK_VERSION, modelId: "microsoft" };
 }
 
 serve(async (req) => {
@@ -68,7 +69,7 @@ serve(async (req) => {
   }
 
   try {
-    const { restorationId, imageBase64, colorize = false, previewMode = false, aspectRatio = "match_input_image" } = await req.json();
+    const { restorationId, imageBase64, colorize = false, previewMode = false, aspectRatio = "match_input_image", trialNumber = 1 } = await req.json();
 
     if (!restorationId) {
       return new Response(
@@ -82,26 +83,35 @@ serve(async (req) => {
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const REPLICATE_WEBHOOK_URL = Deno.env.get("REPLICATE_WEBHOOK_URL");
 
-    if (!REPLICATE_API_TOKEN) {
-      throw new Error("REPLICATE_API_TOKEN is not configured");
-    }
+    if (!REPLICATE_API_TOKEN) throw new Error("REPLICATE_API_TOKEN is not configured");
 
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
-    // Update status to processing
+    // Update status
     await supabase
       .from("photo_restorations")
-      .update({ status: "processing" })
+      .update({ status: "processing", trial_number: trialNumber })
       .eq("id", restorationId);
 
-    // Determine which model version to use
-    const stage = previewMode ? "preview" : "final";
-    const modelVersion = await getModelVersion(supabase, stage);
-    console.log(`Using model version: ${modelVersion} (stage: ${stage})`);
+    // Get model dynamically
+    const { replicateId, modelId } = await getModelForTrial(supabase, trialNumber, previewMode);
+    console.log(`Using model: ${modelId} (${replicateId}) - trial ${trialNumber}, preview: ${previewMode}`);
 
-    // Get the image: either from provided base64 or from storage
+    // Update used_model_id
+    await supabase
+      .from("photo_restorations")
+      .update({ used_model_id: modelId })
+      .eq("id", restorationId);
+
+    // Increment total_runs
+    await supabase.rpc("increment_total_runs", { model_id: modelId }).catch(async () => {
+      // Fallback: manual increment
+      const { data: m } = await supabase.from("ai_models_config").select("total_runs").eq("id", modelId).single();
+      if (m) await supabase.from("ai_models_config").update({ total_runs: (m.total_runs || 0) + 1 }).eq("id", modelId);
+    });
+
+    // Get image
     let imageUrl: string;
-
     if (imageBase64) {
       imageUrl = imageBase64.startsWith("data:") ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`;
     } else {
@@ -111,17 +121,13 @@ serve(async (req) => {
         .eq("id", restorationId)
         .single();
 
-      if (!restoration?.original_image_path) {
-        throw new Error("Original image path not found for restoration");
-      }
+      if (!restoration?.original_image_path) throw new Error("Original image path not found");
 
       const { data: fileData, error: downloadError } = await supabase.storage
         .from("photos")
         .download(restoration.original_image_path);
 
-      if (downloadError || !fileData) {
-        throw new Error("Failed to download original image from storage");
-      }
+      if (downloadError || !fileData) throw new Error("Failed to download original image");
 
       const arrayBuffer = await fileData.arrayBuffer();
       const base64String = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
@@ -137,10 +143,8 @@ serve(async (req) => {
       : "";
     const fullPrompt = basePrompt + colorizeAddition;
 
-    console.log(`Calling Replicate - previewMode: ${previewMode}, resolution: ${outputResolution}`);
-
     const replicateBody: any = {
-      version: modelVersion,
+      version: replicateId,
       input: {
         prompt: fullPrompt,
         image_input: [imageUrl],
@@ -150,7 +154,7 @@ serve(async (req) => {
       },
     };
 
-    // For non-preview (final) mode, use webhook instead of polling
+    // Non-preview: use webhook
     if (!previewMode && REPLICATE_WEBHOOK_URL) {
       replicateBody.webhook = REPLICATE_WEBHOOK_URL;
       replicateBody.webhook_events_filter = ["completed"];
@@ -166,30 +170,22 @@ serve(async (req) => {
 
       if (!createResponse.ok) {
         const errorText = await createResponse.text();
-        console.error("Replicate API error:", createResponse.status, errorText);
         throw new Error(`Replicate API error: ${createResponse.status} - ${errorText}`);
       }
 
       const prediction = await createResponse.json();
-
       await supabase
         .from("photo_restorations")
         .update({ replicate_prediction_id: prediction.id })
         .eq("id", restorationId);
 
-      console.log(`Prediction ${prediction.id} started, webhook will handle completion.`);
-
       return new Response(
-        JSON.stringify({
-          success: true,
-          message: "Processing started, webhook will handle completion.",
-          predictionId: prediction.id,
-        }),
+        JSON.stringify({ success: true, message: "Processing started", predictionId: prediction.id }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Preview mode: use synchronous polling (Prefer: wait)
+    // Preview: synchronous polling
     const createResponse = await fetch("https://api.replicate.com/v1/predictions", {
       method: "POST",
       headers: {
@@ -202,7 +198,6 @@ serve(async (req) => {
 
     if (!createResponse.ok) {
       const errorText = await createResponse.text();
-      console.error("Replicate API error:", createResponse.status, errorText);
       throw new Error(`Replicate API error: ${createResponse.status} - ${errorText}`);
     }
 
@@ -216,73 +211,45 @@ serve(async (req) => {
       prediction = await pollResponse.json();
     }
 
-    if (prediction.status === "failed") {
-      console.error("Replicate prediction failed:", prediction.error);
-      throw new Error(`Restoration failed: ${prediction.error}`);
-    }
+    if (prediction.status === "failed") throw new Error(`Restoration failed: ${prediction.error}`);
 
     const outputUrl = Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
-
-    if (!outputUrl) {
-      throw new Error("No image returned from Replicate");
-    }
-
-    console.log("Downloading restored image...");
+    if (!outputUrl) throw new Error("No image returned from Replicate");
 
     const imageResponse = await fetch(outputUrl);
-    if (!imageResponse.ok) {
-      throw new Error("Failed to download restored image from Replicate");
-    }
+    if (!imageResponse.ok) throw new Error("Failed to download restored image");
     const imageBuffer = new Uint8Array(await imageResponse.arrayBuffer());
 
     const storagePath = previewMode
-      ? `preview/${restorationId}.png`
+      ? `preview/${restorationId}_t${trialNumber}.png`
       : `restored/${restorationId}.png`;
 
     const { error: uploadError } = await supabase.storage
       .from("photos")
-      .upload(storagePath, imageBuffer, {
-        contentType: "image/png",
-        upsert: true,
-      });
+      .upload(storagePath, imageBuffer, { contentType: "image/png", upsert: true });
 
-    if (uploadError) {
-      console.error("Upload error:", uploadError);
-      throw new Error("Failed to upload restored image");
-    }
+    if (uploadError) throw new Error("Failed to upload restored image");
 
     const { data: signedData, error: signedError } = await supabase.storage
       .from("photos")
       .createSignedUrl(storagePath, 3600);
 
-    if (signedError || !signedData?.signedUrl) {
-      throw new Error("Failed to generate preview URL");
-    }
+    if (signedError || !signedData?.signedUrl) throw new Error("Failed to generate preview URL");
 
     if (previewMode) {
       await supabase
         .from("photo_restorations")
-        .update({
-          status: "preview_ready",
-          preview_image_path: storagePath,
-        })
+        .update({ status: "preview_ready", preview_image_path: storagePath })
         .eq("id", restorationId);
     } else {
       await supabase
         .from("photo_restorations")
-        .update({
-          status: "completed",
-          restored_image_path: storagePath,
-          preview_image_path: storagePath,
-        })
+        .update({ status: "completed", restored_image_path: storagePath, preview_image_path: storagePath })
         .eq("id", restorationId);
     }
 
     return new Response(
-      JSON.stringify({
-        success: true,
-        previewUrl: signedData.signedUrl,
-      }),
+      JSON.stringify({ success: true, previewUrl: signedData.signedUrl, modelUsed: modelId }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
