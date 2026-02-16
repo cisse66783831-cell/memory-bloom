@@ -22,10 +22,15 @@ interface RestorationState {
   paymentStatus: "idle" | "pending" | "completed";
   paymentId: string | null;
   outputFormat: OutputFormat;
+  trialCount: number;
+  userRating: number | null;
+  modelUsed: string | null;
 }
 
 interface RestorationContextType extends RestorationState {
   uploadPhoto: (file: File, colorize?: boolean) => Promise<void>;
+  retryWithNewModel: () => Promise<void>;
+  submitRating: (rating: number) => Promise<void>;
   processPayment: (promoCode?: string, depositMethod?: string, subscriptionPlanId?: string, senderPhone?: string) => Promise<void>;
   checkPaymentStatus: () => Promise<void>;
   downloadFile: (type: "png" | "pdf") => void;
@@ -61,6 +66,9 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
     paymentStatus: "idle",
     paymentId: null,
     outputFormat: "match_input_image",
+    trialCount: 1,
+    userRating: null,
+    modelUsed: null,
   });
 
   const setStep = useCallback((step: RestorationStep) => {
@@ -84,9 +92,11 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
         error: null,
         originalImageUrl: URL.createObjectURL(file),
         colorize,
+        trialCount: 1,
+        userRating: null,
+        modelUsed: null,
       }));
 
-      // Convert file to base64 for AI preview
       const base64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result as string);
@@ -94,7 +104,6 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
         reader.readAsDataURL(file);
       });
 
-      // Upload original to storage
       const originalPath = `original/${state.sessionId}/${Date.now()}.jpg`;
       const { error: uploadError } = await supabase.storage
         .from("photos")
@@ -102,7 +111,6 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
 
       if (uploadError) throw new Error("Failed to upload photo");
 
-      // Create restoration record
       const { data: restoration, error: insertError } = await supabase
         .from("photo_restorations")
         .insert({
@@ -118,7 +126,6 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
 
       setState((prev) => ({ ...prev, restorationId: restoration.id, progress: 10 }));
 
-      // Simulate progress
       const progressInterval = setInterval(() => {
         setState((prev) => {
           if (prev.progress >= 80) { clearInterval(progressInterval); return prev; }
@@ -126,7 +133,6 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
         });
       }, 800);
 
-      // Call AI restoration in PREVIEW MODE (cheap 1K resolution)
       const { data: result, error: restoreError } = await supabase.functions.invoke(
         "restore-photo",
         {
@@ -135,6 +141,7 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
             imageBase64: base64,
             colorize: state.colorize,
             previewMode: true,
+            trialNumber: 1,
           },
         }
       );
@@ -151,6 +158,7 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
         progress: 100,
         previewImageUrl: result.previewUrl,
         restoredImageUrl: result.previewUrl,
+        modelUsed: result.modelUsed || null,
       }));
 
     } catch (error) {
@@ -162,6 +170,62 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
       }));
     }
   }, [state.sessionId, state.colorize]);
+
+  const submitRating = useCallback(async (rating: number) => {
+    if (!state.restorationId) return;
+    setState((prev) => ({ ...prev, userRating: rating }));
+    
+    await supabase
+      .from("photo_restorations")
+      .update({ user_rating: rating })
+      .eq("id", state.restorationId);
+  }, [state.restorationId]);
+
+  const retryWithNewModel = useCallback(async () => {
+    if (!state.restorationId || state.trialCount >= 3) return;
+
+    const newTrial = state.trialCount + 1;
+    setState((prev) => ({ ...prev, step: "processing", progress: 0, trialCount: newTrial, userRating: null }));
+
+    const progressInterval = setInterval(() => {
+      setState((prev) => {
+        if (prev.progress >= 80) { clearInterval(progressInterval); return prev; }
+        return { ...prev, progress: prev.progress + Math.random() * 15 };
+      });
+    }, 800);
+
+    try {
+      const { data: result, error } = await supabase.functions.invoke("restore-photo", {
+        body: {
+          restorationId: state.restorationId,
+          colorize: state.colorize,
+          previewMode: true,
+          trialNumber: newTrial,
+        },
+      });
+
+      clearInterval(progressInterval);
+
+      if (error || !result?.success) throw new Error(result?.error || "Retry failed");
+
+      setState((prev) => ({
+        ...prev,
+        step: "comparison",
+        progress: 100,
+        previewImageUrl: result.previewUrl,
+        restoredImageUrl: result.previewUrl,
+        modelUsed: result.modelUsed || null,
+      }));
+    } catch (error) {
+      clearInterval(progressInterval);
+      console.error("Retry error:", error);
+      setState((prev) => ({
+        ...prev,
+        step: "comparison",
+        error: error instanceof Error ? error.message : "Retry failed",
+      }));
+    }
+  }, [state.restorationId, state.trialCount, state.colorize]);
 
   const processPayment = useCallback(async (promoCode?: string, depositMethod?: string, subscriptionPlanId?: string, senderPhone?: string) => {
     if (!state.restorationId) return;
@@ -284,6 +348,9 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
       paymentStatus: "idle",
       paymentId: null,
       outputFormat: "match_input_image",
+      trialCount: 1,
+      userRating: null,
+      modelUsed: null,
     });
   }, []);
 
@@ -292,6 +359,8 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
       value={{
         ...state,
         uploadPhoto,
+        retryWithNewModel,
+        submitRating,
         processPayment,
         checkPaymentStatus,
         downloadFile,

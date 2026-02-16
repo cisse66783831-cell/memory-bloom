@@ -44,6 +44,7 @@ function IndexContent() {
     step, progress, originalImageUrl, previewImageUrl, restoredImageUrl,
     downloadUrls, error, uploadPhoto, processPayment, checkPaymentStatus, downloadFile, reset, setStep,
     paymentStatus, outputFormat, setOutputFormat, restorationId,
+    trialCount, userRating, submitRating, retryWithNewModel,
   } = useRestoration();
 
   const { toast } = useToast();
@@ -51,6 +52,7 @@ function IndexContent() {
   const navigate = useNavigate();
   const [isPaymentLoading, setIsPaymentLoading] = useState(false);
   const [showUploader, setShowUploader] = useState(false);
+  const [localRating, setLocalRating] = useState<number>(0);
   const [searchParams] = useSearchParams();
 
   // Auto-show uploader when coming from dashboard with ?restore=1
@@ -333,7 +335,51 @@ function IndexContent() {
                   </div>
                 </div>
 
-                <PaymentSection onPayment={handlePayment} isLoading={isPaymentLoading} paymentStatus={paymentStatus} restorationId={restorationId} />
+                {/* Rating Section */}
+                <div className="max-w-md mx-auto text-center space-y-4">
+                  <p className="text-sm font-medium text-foreground">
+                    Notez ce résultat (Essai {trialCount}/3) :
+                  </p>
+                  <div className="flex justify-center gap-2">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        onClick={() => { setLocalRating(star); submitRating(star); }}
+                        className="transition-transform hover:scale-110"
+                      >
+                        <Star
+                          className={`w-8 h-8 ${
+                            star <= localRating
+                              ? "fill-primary text-primary"
+                              : "text-muted-foreground"
+                          }`}
+                        />
+                      </button>
+                    ))}
+                  </div>
+
+                  {localRating > 0 && localRating <= 3 && trialCount < 3 && (
+                    <Button
+                      onClick={() => { setLocalRating(0); retryWithNewModel(); }}
+                      variant="outline"
+                      className="rounded-full"
+                    >
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      L'IA peut faire mieux ! Essayer un autre modèle (Gratuit)
+                    </Button>
+                  )}
+
+                  {localRating > 0 && localRating <= 3 && trialCount >= 3 && (
+                    <div className="glass-card p-4 text-sm text-muted-foreground">
+                      Désolé ! Nos experts peuvent retoucher ça manuellement.{" "}
+                      <a href="mailto:support@revivo.app" className="text-primary underline">Contactez l'admin</a>.
+                    </div>
+                  )}
+                </div>
+
+                {(localRating > 3 || localRating === 0) && (
+                  <PaymentSection onPayment={handlePayment} isLoading={isPaymentLoading} paymentStatus={paymentStatus} restorationId={restorationId} />
+                )}
               </div>
             </motion.div>
           )}
