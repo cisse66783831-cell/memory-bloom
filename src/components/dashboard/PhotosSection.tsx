@@ -2,16 +2,15 @@ import { useState, useEffect, forwardRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
-import { 
-  Image, Eye, Download, CreditCard, Sparkles, Loader2, ImageOff 
+import {
+  Image, Eye, Download, CreditCard, Loader2, ImageOff, ShieldCheck, Star, MessageCircle, RefreshCw,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -26,6 +25,24 @@ interface Photo {
   preview_image_path: string | null;
   restored_image_path: string | null;
   pdf_path: string | null;
+  trial_number: number;
+  user_rating: number | null;
+}
+
+const WHATSAPP_NUMBER = "22891234567";
+
+function StarRating({ rating }: { rating: number | null }) {
+  if (rating === null) return null;
+  return (
+    <div className="flex items-center gap-0.5">
+      {[1, 2, 3, 4, 5].map((i) => (
+        <Star
+          key={i}
+          className={`h-3.5 w-3.5 ${i <= rating ? "text-primary fill-primary" : "text-muted-foreground/30"}`}
+        />
+      ))}
+    </div>
+  );
 }
 
 export const PhotosSection = forwardRef<HTMLDivElement>(function PhotosSection(_props, ref) {
@@ -34,6 +51,7 @@ export const PhotosSection = forwardRef<HTMLDivElement>(function PhotosSection(_
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
 
   const { data: photos, isLoading } = useQuery({
     queryKey: ["user-photos", user?.id],
@@ -41,68 +59,77 @@ export const PhotosSection = forwardRef<HTMLDivElement>(function PhotosSection(_
       if (!user?.id) return [];
       const { data, error } = await supabase
         .from("photo_restorations")
-        .select("id, created_at, status, is_paid, preview_image_path, restored_image_path, pdf_path")
+        .select("id, created_at, status, is_paid, preview_image_path, restored_image_path, pdf_path, trial_number, user_rating")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data as Photo[];
     },
     enabled: !!user?.id,
+    refetchInterval: 5000,
   });
 
-  // Generate signed URL when selectedPhoto changes
+  // Generate thumbnails for cards
   useEffect(() => {
-    if (!selectedPhoto?.preview_image_path) {
-      setPreviewUrl(null);
-      return;
+    if (!photos) return;
+    const photosWithImages = photos.filter(
+      (p) => p.preview_image_path || p.restored_image_path
+    );
+    for (const photo of photosWithImages) {
+      const path = photo.restored_image_path || photo.preview_image_path;
+      if (!path || thumbnails[photo.id]) continue;
+      supabase.storage
+        .from("photos")
+        .createSignedUrl(path, 3600)
+        .then(({ data }) => {
+          if (data?.signedUrl) {
+            setThumbnails((prev) => ({ ...prev, [photo.id]: data.signedUrl }));
+          }
+        });
     }
+  }, [photos]);
+
+  // Generate signed URL for modal preview
+  useEffect(() => {
+    if (!selectedPhoto) { setPreviewUrl(null); return; }
+    const path = selectedPhoto.restored_image_path || selectedPhoto.preview_image_path;
+    if (!path) { setPreviewUrl(null); return; }
     setPreviewLoading(true);
     supabase.storage
       .from("photos")
-      .createSignedUrl(selectedPhoto.preview_image_path, 3600)
+      .createSignedUrl(path, 3600)
       .then(({ data, error }) => {
-        if (error) {
-          console.error("Signed URL error:", error);
-          setPreviewUrl(null);
-        } else {
-          setPreviewUrl(data.signedUrl);
-        }
+        setPreviewUrl(error ? null : data?.signedUrl ?? null);
         setPreviewLoading(false);
       });
   }, [selectedPhoto]);
 
-  const getStatusBadge = (status: string, isPaid: boolean) => {
-    if (isPaid && status === "completed") {
-      return <Badge className="bg-success text-success-foreground">Prête</Badge>;
-    }
-    const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "outline" | "destructive" }> = {
-      pending: { label: "En attente", variant: "secondary" },
-      processing: { label: "En cours", variant: "outline" },
-      preview_ready: { label: "Aperçu prêt", variant: "default" },
-      completed: { label: "À débloquer", variant: "secondary" },
-      failed: { label: "Échec", variant: "destructive" },
-    };
-    const config = statusConfig[status] || { label: status, variant: "secondary" };
-    return <Badge variant={config.variant}>{config.label}</Badge>;
-  };
-
-  const handleDownload = async (path: string, filename: string) => {
+  const handleDownload = async (path: string, photoId: string) => {
     try {
-      toast({ title: "Téléchargement lancé...", description: "Veuillez patienter pendant la récupération du fichier HD." });
+      toast({ title: "Téléchargement lancé...", description: "Récupération du fichier HD." });
       const { data, error } = await supabase.storage.from("photos").download(path);
       if (error) throw error;
+
+      const ext = path.endsWith(".jpg") || path.endsWith(".jpeg") ? ".jpg" : ".png";
       const url = window.URL.createObjectURL(data);
       const link = document.createElement("a");
       link.href = url;
-      link.download = filename;
+      link.download = `REVIVO-HD-${photoId.slice(0, 8)}${ext}`;
       document.body.appendChild(link);
       link.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(link);
     } catch (err) {
       console.error("Erreur download:", err);
-      toast({ title: "Erreur", description: "Impossible de récupérer le fichier. Réessayez plus tard.", variant: "destructive" });
+      toast({ title: "Erreur", description: "Impossible de récupérer le fichier.", variant: "destructive" });
     }
+  };
+
+  const openWhatsApp = (photoId: string) => {
+    const message = encodeURIComponent(
+      `Bonjour, j'ai besoin d'aide pour ma restauration photo (ID: ${photoId}). Mes 3 essais gratuits n'ont pas donné un résultat satisfaisant.`
+    );
+    window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${message}`, "_blank");
   };
 
   if (isLoading) {
@@ -143,6 +170,9 @@ export const PhotosSection = forwardRef<HTMLDivElement>(function PhotosSection(_
     );
   }
 
+  const isFailed = (photo: Photo) =>
+    photo.status === "failed" || (photo.trial_number >= 3 && photo.user_rating !== null && photo.user_rating <= 3 && !photo.is_paid);
+
   return (
     <>
       <Card ref={ref}>
@@ -152,70 +182,124 @@ export const PhotosSection = forwardRef<HTMLDivElement>(function PhotosSection(_
             Mes photos ({photos.length})
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="w-full overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Statut</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {photos.map((photo) => (
-                  <TableRow key={photo.id}>
-                    <TableCell className="whitespace-nowrap">
-                      {format(new Date(photo.created_at), "dd MMM yyyy", { locale: fr })}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      {getStatusBadge(photo.status, photo.is_paid)}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">
-                        {photo.is_paid ? "Payée" : "Gratuite"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right space-x-2 whitespace-nowrap">
-                      {photo.preview_image_path && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setSelectedPhoto(photo)}
-                        >
-                          <Eye className="h-4 w-4 mr-1" />
-                          Aperçu
-                        </Button>
+        <CardContent className="space-y-4">
+          {/* Security Alert */}
+          <Alert className="border-primary/30 bg-primary/5">
+            <ShieldCheck className="h-4 w-4 text-primary" />
+            <AlertDescription className="text-sm">
+              🛡️ <strong>Sécurité :</strong> Vos photos sont supprimées automatiquement de nos serveurs 48h après leur création. Pensez à les télécharger.
+            </AlertDescription>
+          </Alert>
+
+          {/* Responsive Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            {photos.map((photo) => {
+              const failed = isFailed(photo);
+              const isProcessing = photo.status === "processing" || photo.status === "pending";
+              const isPreview = (photo.status === "preview_ready" || photo.status === "completed") && !photo.is_paid;
+              const isCompleted = photo.is_paid && photo.status === "completed";
+
+              return (
+                <div
+                  key={photo.id}
+                  className={`rounded-xl border overflow-hidden transition-all ${
+                    failed
+                      ? "border-destructive/40 bg-destructive/5"
+                      : isCompleted
+                        ? "border-green-500/40 bg-green-500/5"
+                        : "border-border bg-card"
+                  }`}
+                >
+                  {/* Image / Skeleton */}
+                  <div className="aspect-square relative bg-muted/30 overflow-hidden">
+                    {isProcessing ? (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4">
+                        <Skeleton className="w-full h-full absolute inset-0" />
+                        <RefreshCw className="h-8 w-8 text-primary animate-spin relative z-10" />
+                        <span className="text-xs text-muted-foreground relative z-10">IA au travail...</span>
+                      </div>
+                    ) : thumbnails[photo.id] ? (
+                      <img
+                        src={thumbnails[photo.id]}
+                        alt="Photo restaurée"
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <ImageOff className="h-8 w-8 text-muted-foreground/40" />
+                      </div>
+                    )}
+
+                    {/* Status Badge overlay */}
+                    <div className="absolute top-2 left-2">
+                      {isProcessing && (
+                        <Badge variant="secondary" className="text-[10px] gap-1">
+                          <Loader2 className="h-3 w-3 animate-spin" /> IA au travail...
+                        </Badge>
                       )}
-                      {photo.is_paid && photo.restored_image_path ? (
-                        <Button
-                          variant="default"
-                          size="sm"
-                          onClick={() => handleDownload(photo.restored_image_path!, "REVIVO-HD-" + photo.id.slice(0, 8) + ".png")}
-                        >
-                          <Download className="h-4 w-4 mr-1" />
-                          Télécharger
-                        </Button>
-                      ) : photo.status === "completed" || photo.status === "preview_ready" ? (
-                        <>
-                          <Button variant="default" size="sm" asChild>
-                            <a href={`/?photo=${photo.id}`}>
-                              <CreditCard className="h-4 w-4 mr-1" />
-                              Débloquer
-                            </a>
-                          </Button>
-                          <Button variant="outline" size="sm">
-                            <Sparkles className="h-4 w-4 mr-1" />
-                            Gratuit
-                          </Button>
-                        </>
-                      ) : null}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                      {isPreview && !failed && (
+                        <Badge className="text-[10px] bg-primary/90">Aperçu Gratuit</Badge>
+                      )}
+                      {isCompleted && (
+                        <Badge className="text-[10px] bg-[hsl(var(--success))] text-[hsl(var(--success-foreground))]">✅ HD Dispo</Badge>
+                      )}
+                      {failed && (
+                        <Badge variant="destructive" className="text-[10px]">Échec</Badge>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Card Footer */}
+                  <div className="p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">
+                        {format(new Date(photo.created_at), "dd MMM yyyy", { locale: fr })}
+                      </span>
+                      <StarRating rating={photo.user_rating} />
+                    </div>
+
+                    {/* Actions */}
+                    {isProcessing && (
+                      <p className="text-xs text-muted-foreground text-center">Traitement en cours...</p>
+                    )}
+
+                    {isPreview && !failed && (
+                      <Button
+                        className="w-full"
+                        size="sm"
+                        onClick={() => setSelectedPhoto(photo)}
+                      >
+                        <Eye className="h-4 w-4 mr-1.5" />
+                        VOIR & DÉBLOQUER
+                      </Button>
+                    )}
+
+                    {isCompleted && photo.restored_image_path && (
+                      <Button
+                        className="w-full bg-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/90 text-[hsl(var(--success-foreground))]"
+                        size="sm"
+                        onClick={() => handleDownload(photo.restored_image_path!, photo.id)}
+                      >
+                        <Download className="h-4 w-4 mr-1.5" />
+                        TÉLÉCHARGER
+                      </Button>
+                    )}
+
+                    {failed && (
+                      <Button
+                        className="w-full bg-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/90 text-[hsl(var(--success-foreground))]"
+                        size="sm"
+                        onClick={() => openWhatsApp(photo.id)}
+                      >
+                        <MessageCircle className="h-4 w-4 mr-1.5" />
+                        Contacter l'Expert
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </CardContent>
       </Card>
@@ -239,6 +323,16 @@ export const PhotosSection = forwardRef<HTMLDivElement>(function PhotosSection(_
               <p className="text-muted-foreground">Impossible de charger l'aperçu</p>
             )}
           </div>
+          {selectedPhoto && !selectedPhoto.is_paid && (
+            <div className="flex gap-2 pt-2">
+              <Button className="flex-1" asChild>
+                <a href={`/?photo=${selectedPhoto.id}`}>
+                  <CreditCard className="h-4 w-4 mr-1.5" />
+                  Débloquer le HD
+                </a>
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </>

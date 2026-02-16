@@ -16,40 +16,28 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const now = new Date();
-    const hours72Ago = new Date(now.getTime() - 72 * 60 * 60 * 1000).toISOString();
-    const days30Ago = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const hours48Ago = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
 
-    // 1. Get unpaid restorations older than 72h
-    const { data: unpaid, error: e1 } = await supabase
+    // Only delete UNPAID restorations older than 48h
+    // NEVER delete paid photos (is_paid = true)
+    const { data: toDelete, error: queryErr } = await supabase
       .from("photo_restorations")
       .select("id, original_image_path, preview_image_path, restored_image_path")
-      .neq("status", "completed")
-      .lt("created_at", hours72Ago);
+      .eq("is_paid", false)
+      .lt("created_at", hours48Ago);
 
-    // 2. Get paid restorations older than 30 days
-    const { data: paid, error: e2 } = await supabase
-      .from("photo_restorations")
-      .select("id, original_image_path, preview_image_path, restored_image_path")
-      .eq("status", "completed")
-      .lt("created_at", days30Ago);
+    if (queryErr) throw new Error(`Query error: ${queryErr.message}`);
 
-    if (e1 || e2) {
-      throw new Error(`Query error: ${e1?.message || e2?.message}`);
-    }
-
-    const toDelete = [...(unpaid || []), ...(paid || [])];
     let deletedFiles = 0;
     let deletedRows = 0;
 
-    for (const row of toDelete) {
-      // Delete storage files
+    for (const row of toDelete || []) {
       const paths = [row.original_image_path, row.preview_image_path, row.restored_image_path].filter(Boolean) as string[];
       if (paths.length > 0) {
         const { error: storageErr } = await supabase.storage.from("photos").remove(paths);
         if (!storageErr) deletedFiles += paths.length;
       }
 
-      // Delete DB row
       const { error: delErr } = await supabase
         .from("photo_restorations")
         .delete()
@@ -57,7 +45,7 @@ Deno.serve(async (req) => {
       if (!delErr) deletedRows++;
     }
 
-    const result = { deletedRows, deletedFiles, processed: toDelete.length };
+    const result = { deletedRows, deletedFiles, processed: (toDelete || []).length };
     console.log("Cleanup result:", result);
 
     return new Response(JSON.stringify({ success: true, ...result }), {
