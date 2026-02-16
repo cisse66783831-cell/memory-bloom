@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.cleanup-expired]
 verify_jwt = false
+
+[functions.auto-optimize-models]
+verify_jwt = false

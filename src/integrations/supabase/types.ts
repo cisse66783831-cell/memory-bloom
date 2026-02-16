@@ -14,6 +14,69 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_models_config: {
+        Row: {
+          admin_boost: boolean
+          avg_rating: number
+          conversion_rate: number
+          created_at: string
+          current_score: number
+          id: string
+          is_active: boolean
+          name: string
+          replicate_version: string
+          stage: string
+          total_runs: number
+          updated_at: string
+        }
+        Insert: {
+          admin_boost?: boolean
+          avg_rating?: number
+          conversion_rate?: number
+          created_at?: string
+          current_score?: number
+          id?: string
+          is_active?: boolean
+          name: string
+          replicate_version: string
+          stage?: string
+          total_runs?: number
+          updated_at?: string
+        }
+        Update: {
+          admin_boost?: boolean
+          avg_rating?: number
+          conversion_rate?: number
+          created_at?: string
+          current_score?: number
+          id?: string
+          is_active?: boolean
+          name?: string
+          replicate_version?: string
+          stage?: string
+          total_runs?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      app_settings: {
+        Row: {
+          key: string
+          updated_at: string
+          value: string
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          value: string
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          value?: string
+        }
+        Relationships: []
+      }
       deposit_instructions: {
         Row: {
           account_name: string | null
