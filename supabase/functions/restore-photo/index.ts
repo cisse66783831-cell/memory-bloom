@@ -81,11 +81,9 @@ function buildModelInput(modelId: string, imageUrl: string, prompt: string, prev
     };
   } else if (modelId === "nano-banana" || modelId === "nano-banana-pro" || modelId === "gemini-flash") {
     return {
-      text: prompt,
-      image_input: [imageUrl],
-      aspect_ratio: aspectRatio,
+      image: imageUrl,
+      prompt: prompt || "Restaurer cette photo, améliorer la netteté, supprimer le flou et le bruit, haute résolution, photoréaliste.",
       output_format: "png",
-      resolution,
     };
   } else if (modelId === "flux-restore") {
     return {
