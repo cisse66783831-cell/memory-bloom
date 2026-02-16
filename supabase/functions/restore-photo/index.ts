@@ -99,15 +99,27 @@ function buildModelInput(modelId: string, imageUrl: string, prompt: string, prev
   }
 }
 
+// Resolve owner/model to latest version hash
+async function resolveVersion(replicateId: string, apiToken: string): Promise<string> {
+  if (!replicateId.includes("/")) return replicateId; // already a hash
+  const [owner, model] = replicateId.split("/");
+  const resp = await fetch(`https://api.replicate.com/v1/models/${owner}/${model}`, {
+    headers: { Authorization: `Bearer ${apiToken}` },
+  });
+  if (!resp.ok) throw new Error(`Failed to resolve model ${replicateId}: ${resp.status}`);
+  const data = await resp.json();
+  const version = data.latest_version?.id;
+  if (!version) throw new Error(`No latest version found for ${replicateId}`);
+  console.log(`Resolved ${replicateId} → ${version}`);
+  return version;
+}
+
 async function runSingleModel(
   replicateId: string, modelId: string, modelInput: Record<string, any>,
   apiToken: string, webhookUrl: string | undefined, useWebhook: boolean
 ): Promise<{ outputUrl: string; predictionId: string }> {
-  // Use "model" for owner/name format, "version" for hash format
-  const isModelFormat = replicateId.includes("/");
-  const body: any = isModelFormat
-    ? { model: replicateId, input: modelInput }
-    : { version: replicateId, input: modelInput };
+  const version = await resolveVersion(replicateId, apiToken);
+  const body: any = { version, input: modelInput };
 
   const headers: Record<string, string> = {
     Authorization: `Bearer ${apiToken}`,
@@ -330,10 +342,8 @@ serve(async (req) => {
     const fullPrompt = (modelConfig.systemPrompt || defaultPrompt) + colorizeAddition;
     const modelInput = buildModelInput(modelConfig.modelId, imageUrl, fullPrompt, previewMode, outputAspectRatio, outputResolution);
 
-    const isModelFormat = modelConfig.replicateId.includes("/");
-    const replicateBody: any = isModelFormat
-      ? { model: modelConfig.replicateId, input: modelInput }
-      : { version: modelConfig.replicateId, input: modelInput };
+    const resolvedVersion = await resolveVersion(modelConfig.replicateId, REPLICATE_API_TOKEN);
+    const replicateBody: any = { version: resolvedVersion, input: modelInput };
 
     // Non-preview: use webhook
     if (!previewMode && REPLICATE_WEBHOOK_URL) {
