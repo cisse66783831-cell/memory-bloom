@@ -104,11 +104,21 @@ serve(async (req) => {
       .eq("id", restorationId);
 
     // Increment total_runs
-    await supabase.rpc("increment_total_runs", { model_id: modelId }).catch(async () => {
-      // Fallback: manual increment
-      const { data: m } = await supabase.from("ai_models_config").select("total_runs").eq("id", modelId).single();
-      if (m) await supabase.from("ai_models_config").update({ total_runs: (m.total_runs || 0) + 1 }).eq("id", modelId);
-    });
+    try {
+      const { data: m } = await supabase
+        .from("ai_models_config")
+        .select("total_runs")
+        .eq("id", modelId)
+        .single();
+      if (m) {
+        await supabase
+          .from("ai_models_config")
+          .update({ total_runs: (m.total_runs || 0) + 1 })
+          .eq("id", modelId);
+      }
+    } catch (e) {
+      console.warn("Could not increment total_runs:", e);
+    }
 
     // Get image
     let imageUrl: string;
