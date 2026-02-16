@@ -81,7 +81,7 @@ function buildModelInput(modelId: string, imageUrl: string, prompt: string, prev
     };
   } else if (modelId === "nano-banana" || modelId === "nano-banana-pro" || modelId === "gemini-flash") {
     return {
-      prompt,
+      text: prompt,
       image_input: [imageUrl],
       aspect_ratio: aspectRatio,
       output_format: "png",
