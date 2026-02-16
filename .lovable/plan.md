@@ -1,57 +1,65 @@
 
 
-## Correction des erreurs de production
+## Correction du mapping d'input pour `flux-restore`
 
-### Erreur 1 (CRITIQUE) : `restore-photo` retourne une erreur 500
+### Probleme
 
-**Cause** : Ligne 107 de `supabase/functions/restore-photo/index.ts` utilise `.catch()` sur le retour de `supabase.rpc()`. Le client Supabase ne retourne pas une vraie Promise mais un "thenable", ce qui fait que `.catch()` n'existe pas et crash la fonction.
+Le modele `flux-kontext-apps/restore-image` attend des champs specifiques qui ne correspondent pas a ce que le code envoie actuellement.
 
-De plus, la fonction RPC `increment_total_runs` n'a jamais ete creee dans la base de donnees.
+**Champs attendus par l'API Replicate :**
+- `input_image` : string (URL simple)
+- `output_format` : string (par defaut "jpg")
+- `seed` : integer (optionnel)
+- `safety_filter_level` : string (optionnel)
 
-**Solution** : Remplacer le bloc `.rpc(...).catch(...)` (lignes 107-111) par un simple `try/catch` classique avec une mise a jour manuelle directe de `total_runs` :
+**Ce que le code envoie actuellement (INCORRECT) :**
+- `image_input` : array (mauvais nom + mauvais type)
+- `prompt` : string (non supporte)
+- `aspect_ratio` : string (non supporte)
+- `resolution` : string (non supporte)
+
+### Verification des autres modeles
+
+Tous les autres modeles sont correctement configures :
+
+| Modele | Statut |
+|--------|--------|
+| microsoft | OK - `image` (string) |
+| real-esrgan | OK - `image` (string), `scale` |
+| gfpgan | OK - `img` (string), `version`, `scale` |
+| codeformer | OK - `image` (string), `codeformer_fidelity`, `upscale` |
+| nano-banana | OK - `image_input` (array), `prompt`, `aspect_ratio`, `output_format` |
+| nano-banana-pro | OK - `image_input` (array), `prompt`, `aspect_ratio`, `output_format`, `resolution` |
+| flux-restore | ERREUR - champs incorrects |
+
+### Modification
+
+**Fichier** : `supabase/functions/restore-photo/index.ts`
+
+Remplacer le bloc `flux-restore` dans `buildModelInput` (lignes 83-90) :
 
 ```typescript
-// Remplacer:
-await supabase.rpc("increment_total_runs", { model_id: modelId }).catch(async () => {
-  const { data: m } = await supabase.from("ai_models_config").select("total_runs").eq("id", modelId).single();
-  if (m) await supabase.from("ai_models_config").update({ total_runs: (m.total_runs || 0) + 1 }).eq("id", modelId);
-});
+// Avant (incorrect) :
+} else if (modelId === "flux-restore") {
+  return {
+    prompt,
+    image_input: [imageUrl],
+    aspect_ratio: aspectRatio,
+    output_format: "png",
+    resolution,
+  };
 
-// Par:
-try {
-  const { data: m } = await supabase
-    .from("ai_models_config")
-    .select("total_runs")
-    .eq("id", modelId)
-    .single();
-  if (m) {
-    await supabase
-      .from("ai_models_config")
-      .update({ total_runs: (m.total_runs || 0) + 1 })
-      .eq("id", modelId);
-  }
-} catch (e) {
-  console.warn("Could not increment total_runs:", e);
-}
+// Apres (correct) :
+} else if (modelId === "flux-restore") {
+  return {
+    input_image: imageUrl,
+    output_format: "png",
+  };
 ```
 
-**Fichier** : `supabase/functions/restore-photo/index.ts` (lignes 107-111)
-
----
-
-### Erreur 2 (Warning) : React ref sur PhotosSection/Dialog
-
-**Cause** : Le composant `DialogContent` de shadcn/ui tente de passer une ref a un composant enfant qui ne la supporte pas. C'est un warning cosmétique qui n'empeche pas le fonctionnement.
-
-**Solution** : Pas de modification necessaire. Ce warning provient d'une incompatibilite mineure entre les versions de `@radix-ui/react-dialog` et React 18. Il n'affecte pas le fonctionnement de l'application.
-
----
+Les champs `prompt`, `aspect_ratio` et `resolution` ne sont pas supportes par ce modele et seront retires. Le champ `image_input` est renomme en `input_image` et passe en string simple au lieu d'un tableau.
 
 ### Resume
 
-| Fichier | Modification |
-|---------|-------------|
-| `supabase/functions/restore-photo/index.ts` | Remplacer `.rpc().catch()` par un `try/catch` avec update manuel |
-
-Une seule modification, un seul fichier, et la restauration de photos fonctionnera a nouveau.
+Un seul modele a corriger (`flux-restore`), une seule modification dans un seul fichier. Les 6 autres modeles sont correctement configures et fonctionneront sans probleme.
 
