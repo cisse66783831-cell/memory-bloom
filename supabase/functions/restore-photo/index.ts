@@ -153,15 +153,48 @@ serve(async (req) => {
       : "";
     const fullPrompt = basePrompt + colorizeAddition;
 
-    const replicateBody: any = {
-      version: replicateId,
-      input: {
+    // Build model-specific input based on model ID
+    let modelInput: Record<string, any>;
+
+    if (modelId === "nano-banana" || modelId === "gemini-flash") {
+      // Flux/Gemini-style models: use image_input array + prompt
+      modelInput = {
         prompt: fullPrompt,
         image_input: [imageUrl],
         aspect_ratio: outputAspectRatio,
         output_format: "png",
         resolution: outputResolution,
-      },
+      };
+    } else if (modelId === "real-esrgan") {
+      // Real-ESRGAN: just needs image, scale factor
+      modelInput = {
+        image: imageUrl,
+        scale: previewMode ? 2 : 4,
+      };
+    } else if (modelId === "gfpgan") {
+      // GFPGAN: image + version
+      modelInput = {
+        img: imageUrl,
+        version: "v1.4",
+        scale: previewMode ? 2 : 4,
+      };
+    } else if (modelId === "codeformer") {
+      // CodeFormer: image + fidelity
+      modelInput = {
+        image: imageUrl,
+        codeformer_fidelity: 0.7,
+        upscale: previewMode ? 1 : 2,
+      };
+    } else {
+      // Microsoft and fallback: uses "image" field
+      modelInput = {
+        image: imageUrl,
+      };
+    }
+
+    const replicateBody: any = {
+      version: replicateId,
+      input: modelInput,
     };
 
     // Non-preview: use webhook
