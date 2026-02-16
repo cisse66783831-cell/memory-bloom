@@ -103,7 +103,11 @@ async function runSingleModel(
   replicateId: string, modelId: string, modelInput: Record<string, any>,
   apiToken: string, webhookUrl: string | undefined, useWebhook: boolean
 ): Promise<{ outputUrl: string; predictionId: string }> {
-  const body: any = { version: replicateId, input: modelInput };
+  // Use "model" for owner/name format, "version" for hash format
+  const isModelFormat = replicateId.includes("/");
+  const body: any = isModelFormat
+    ? { model: replicateId, input: modelInput }
+    : { version: replicateId, input: modelInput };
 
   const headers: Record<string, string> = {
     Authorization: `Bearer ${apiToken}`,
@@ -326,7 +330,10 @@ serve(async (req) => {
     const fullPrompt = (modelConfig.systemPrompt || defaultPrompt) + colorizeAddition;
     const modelInput = buildModelInput(modelConfig.modelId, imageUrl, fullPrompt, previewMode, outputAspectRatio, outputResolution);
 
-    const replicateBody: any = { version: modelConfig.replicateId, input: modelInput };
+    const isModelFormat = modelConfig.replicateId.includes("/");
+    const replicateBody: any = isModelFormat
+      ? { model: modelConfig.replicateId, input: modelInput }
+      : { version: modelConfig.replicateId, input: modelInput };
 
     // Non-preview: use webhook
     if (!previewMode && REPLICATE_WEBHOOK_URL) {
