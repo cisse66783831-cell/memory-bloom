@@ -6,6 +6,62 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const FALLBACK_VERSION = "f5318740f60d79bf0c480216aaf9ca7614977553170eacd19ff8cbcda2409ac8";
+
+async function getModelVersion(supabase: any, stage: string): Promise<string> {
+  try {
+    // 1. Read management mode
+    const { data: setting } = await supabase
+      .from("app_settings")
+      .select("value")
+      .eq("key", "ai_management_mode")
+      .single();
+
+    const mode = setting?.value || "manual";
+
+    if (mode === "auto") {
+      // Auto mode: best score for matching stage
+      const { data: models } = await supabase
+        .from("ai_models_config")
+        .select("replicate_version, id")
+        .eq("is_active", true)
+        .or(`stage.eq.${stage},stage.eq.all`)
+        .order("current_score", { ascending: false })
+        .limit(1);
+
+      if (models && models.length > 0) {
+        // Increment total_runs
+        await supabase.rpc("increment_model_runs_noop").catch(() => {
+          // If RPC doesn't exist, do manual update
+          supabase.from("ai_models_config").update({ total_runs: models[0].total_runs + 1 }).eq("id", models[0].id);
+        });
+        await supabase.from("ai_models_config").update({}).eq("id", models[0].id); // trigger updated_at
+        return models[0].replicate_version;
+      }
+    } else {
+      // Manual mode: first active model for matching stage
+      const { data: models } = await supabase
+        .from("ai_models_config")
+        .select("replicate_version, id, total_runs")
+        .eq("is_active", true)
+        .or(`stage.eq.${stage},stage.eq.all`)
+        .limit(1);
+
+      if (models && models.length > 0) {
+        // Increment total_runs
+        await supabase
+          .from("ai_models_config")
+          .update({ total_runs: (models[0].total_runs || 0) + 1 })
+          .eq("id", models[0].id);
+        return models[0].replicate_version;
+      }
+    }
+  } catch (err) {
+    console.error("Error fetching model config, using fallback:", err);
+  }
+  return FALLBACK_VERSION;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -38,13 +94,17 @@ serve(async (req) => {
       .update({ status: "processing" })
       .eq("id", restorationId);
 
+    // Determine which model version to use
+    const stage = previewMode ? "preview" : "final";
+    const modelVersion = await getModelVersion(supabase, stage);
+    console.log(`Using model version: ${modelVersion} (stage: ${stage})`);
+
     // Get the image: either from provided base64 or from storage
     let imageUrl: string;
 
     if (imageBase64) {
       imageUrl = imageBase64.startsWith("data:") ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`;
     } else {
-      // Read original image from storage
       const { data: restoration } = await supabase
         .from("photo_restorations")
         .select("original_image_path")
@@ -68,11 +128,9 @@ serve(async (req) => {
       imageUrl = `data:image/jpeg;base64,${base64String}`;
     }
 
-    // Preview always uses original aspect ratio + 1K; final uses user-chosen format + 2K
     const outputAspectRatio = previewMode ? "match_input_image" : aspectRatio;
     const outputResolution = previewMode ? "1K" : "2K";
 
-    // Build the restoration prompt
     const basePrompt = "Increase the resolution of this image to 300 dpi, the standard for print. However, do not change anything else. Remove all edge imperfections and make the photo sharp and clear. Adjust the lighting and overall quality so it looks like it was taken with an iPhone 14 Pro Max camera — natural colors, precise details, balanced exposure, and professional-grade sharpness.";
     const colorizeAddition = colorize
       ? " Also, colorize this photo naturally if it is black and white, using realistic and vivid colors appropriate to the era and subject."
@@ -81,9 +139,8 @@ serve(async (req) => {
 
     console.log(`Calling Replicate - previewMode: ${previewMode}, resolution: ${outputResolution}`);
 
-    // Build Replicate request body
     const replicateBody: any = {
-      version: "f5318740f60d79bf0c480216aaf9ca7614977553170eacd19ff8cbcda2409ac8",
+      version: modelVersion,
       input: {
         prompt: fullPrompt,
         image_input: [imageUrl],
@@ -115,7 +172,6 @@ serve(async (req) => {
 
       const prediction = await createResponse.json();
 
-      // Store the prediction ID for webhook matching
       await supabase
         .from("photo_restorations")
         .update({ replicate_prediction_id: prediction.id })
@@ -152,7 +208,6 @@ serve(async (req) => {
 
     let prediction = await createResponse.json();
 
-    // Poll for completion (only for preview mode)
     while (prediction.status !== "succeeded" && prediction.status !== "failed") {
       await new Promise(resolve => setTimeout(resolve, 2000));
       const pollResponse = await fetch(`https://api.replicate.com/v1/predictions/${prediction.id}`, {
@@ -174,14 +229,12 @@ serve(async (req) => {
 
     console.log("Downloading restored image...");
 
-    // Download the restored image
     const imageResponse = await fetch(outputUrl);
     if (!imageResponse.ok) {
       throw new Error("Failed to download restored image from Replicate");
     }
     const imageBuffer = new Uint8Array(await imageResponse.arrayBuffer());
 
-    // Store with different paths for preview vs final
     const storagePath = previewMode
       ? `preview/${restorationId}.png`
       : `restored/${restorationId}.png`;
@@ -198,7 +251,6 @@ serve(async (req) => {
       throw new Error("Failed to upload restored image");
     }
 
-    // Generate a signed URL
     const { data: signedData, error: signedError } = await supabase.storage
       .from("photos")
       .createSignedUrl(storagePath, 3600);
@@ -207,7 +259,6 @@ serve(async (req) => {
       throw new Error("Failed to generate preview URL");
     }
 
-    // Update the restoration record
     if (previewMode) {
       await supabase
         .from("photo_restorations")
