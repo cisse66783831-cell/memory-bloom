@@ -140,7 +140,7 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
             restorationId: restoration.id,
             imageBase64: base64,
             colorize: state.colorize,
-            previewMode: true,
+            aspectRatio: state.outputFormat,
             trialNumber: 1,
           },
         }

@@ -44,7 +44,7 @@ function IndexContent() {
     step, progress, originalImageUrl, previewImageUrl, restoredImageUrl,
     downloadUrls, error, uploadPhoto, processPayment, checkPaymentStatus, downloadFile, reset, setStep,
     paymentStatus, outputFormat, setOutputFormat, restorationId,
-    trialCount, userRating, submitRating, retryWithNewModel,
+    userRating, submitRating,
   } = useRestoration();
 
   const { toast } = useToast();
@@ -203,7 +203,39 @@ function IndexContent() {
 
               {/* UPLOADER */}
               <section id="uploader-section" className={showUploader ? "py-8 pt-28" : ""}>
-                {showUploader && <PhotoUploader onPhotoSelected={handlePhotoSelected} />}
+                {showUploader && (
+                  <div className="space-y-6">
+                    {/* Format picker — chosen BEFORE generation */}
+                    <div className="max-w-xl mx-auto px-4">
+                      <p className="text-sm font-medium text-foreground mb-3 text-center">Choisissez le format de sortie :</p>
+                      <div className="grid grid-cols-3 gap-3">
+                        {([
+                          { value: "match_input_image" as const, label: "Original", icon: "↔" },
+                          { value: "1:1" as const, label: "Carré", icon: "⬜" },
+                          { value: "3:4" as const, label: "Portrait", icon: "▯" },
+                          { value: "4:3" as const, label: "Paysage", icon: "▭" },
+                          { value: "9:16" as const, label: "Story", icon: "📱" },
+                          { value: "16:9" as const, label: "Cinéma", icon: "🎬" },
+                        ]).map((opt) => (
+                          <button
+                            key={opt.value}
+                            onClick={() => setOutputFormat(opt.value)}
+                            className={`p-3 rounded-xl border-2 transition-all text-center ${
+                              outputFormat === opt.value
+                                ? "border-primary bg-primary/10 ring-2 ring-primary/20"
+                                : "border-border/50 hover:border-border"
+                            }`}
+                          >
+                            <p className="text-xl mb-1">{opt.icon}</p>
+                            <p className="text-sm font-medium text-foreground">{opt.label}</p>
+                            <p className="text-[10px] text-muted-foreground">{opt.value === "match_input_image" ? "tel quel" : opt.value}</p>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <PhotoUploader onPhotoSelected={handlePhotoSelected} />
+                  </div>
+                )}
               </section>
 
               {/* HOW IT WORKS */}
@@ -302,44 +334,13 @@ function IndexContent() {
               <div className="container space-y-8 py-8">
                 <div className="text-center">
                   <h1 className="font-heading text-2xl md:text-3xl text-foreground mb-2 font-bold">Voyez la transformation</h1>
-                  <p className="text-muted-foreground">Aperçu en basse résolution — la version HD sera débloquée après paiement.</p>
+                  <p className="text-muted-foreground">Votre photo restaurée en HD — protégée par filigrane jusqu'au paiement.</p>
                 </div>
                 <BeforeAfterSlider beforeImage={beforeImage} afterImage={afterImage} />
 
-                {/* Format picker */}
-                <div className="max-w-lg mx-auto">
-                  <p className="text-sm font-medium text-foreground mb-3 text-center">Choisissez le format de sortie :</p>
-                  <div className="grid grid-cols-3 gap-3">
-                    {([
-                      { value: "match_input_image" as const, label: "Original", icon: "↔" },
-                      { value: "1:1" as const, label: "Carré", icon: "⬜" },
-                      { value: "3:4" as const, label: "Portrait", icon: "▯" },
-                      { value: "4:3" as const, label: "Paysage", icon: "▭" },
-                      { value: "9:16" as const, label: "Story", icon: "📱" },
-                      { value: "16:9" as const, label: "Cinéma", icon: "🎬" },
-                    ]).map((opt) => (
-                      <button
-                        key={opt.value}
-                        onClick={() => setOutputFormat(opt.value)}
-                        className={`p-3 rounded-xl border-2 transition-all text-center ${
-                          outputFormat === opt.value
-                            ? "border-primary bg-primary/10 ring-2 ring-primary/20"
-                            : "border-border/50 hover:border-border"
-                        }`}
-                      >
-                        <p className="text-xl mb-1">{opt.icon}</p>
-                        <p className="text-sm font-medium text-foreground">{opt.label}</p>
-                        <p className="text-[10px] text-muted-foreground">{opt.value === "match_input_image" ? "tel quel" : opt.value}</p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
                 {/* Rating Section */}
                 <div className="max-w-md mx-auto text-center space-y-4">
-                  <p className="text-sm font-medium text-foreground">
-                    Notez ce résultat (Essai {trialCount}/3) :
-                  </p>
+                  <p className="text-sm font-medium text-foreground">Notez ce résultat :</p>
                   <div className="flex justify-center gap-2">
                     {[1, 2, 3, 4, 5].map((star) => (
                       <button
@@ -357,29 +358,9 @@ function IndexContent() {
                       </button>
                     ))}
                   </div>
-
-                  {localRating > 0 && localRating <= 3 && trialCount < 3 && (
-                    <Button
-                      onClick={() => { setLocalRating(0); retryWithNewModel(); }}
-                      variant="outline"
-                      className="rounded-full"
-                    >
-                      <Sparkles className="w-4 h-4 mr-2" />
-                      L'IA peut faire mieux ! Essayer un autre modèle (Gratuit)
-                    </Button>
-                  )}
-
-                  {localRating > 0 && localRating <= 3 && trialCount >= 3 && (
-                    <div className="glass-card p-4 text-sm text-muted-foreground">
-                      Désolé ! Nos experts peuvent retoucher ça manuellement.{" "}
-                      <a href="mailto:support@revivo.app" className="text-primary underline">Contactez l'admin</a>.
-                    </div>
-                  )}
                 </div>
 
-                {(localRating > 3 || localRating === 0) && (
-                  <PaymentSection onPayment={handlePayment} isLoading={isPaymentLoading} paymentStatus={paymentStatus} restorationId={restorationId} />
-                )}
+                <PaymentSection onPayment={handlePayment} isLoading={isPaymentLoading} paymentStatus={paymentStatus} restorationId={restorationId} />
               </div>
             </motion.div>
           )}
