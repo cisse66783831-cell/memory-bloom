@@ -81,7 +81,7 @@ function buildModelInput(modelId: string, imageUrl: string, prompt: string, prev
     };
   } else if (modelId === "nano-banana" || modelId === "nano-banana-pro" || modelId === "gemini-flash") {
     return {
-      prompt: prompt || "Restaurer cette photo, améliorer la netteté, supprimer le flou et le bruit, haute résolution, photoréaliste.",
+      prompt: prompt || "Increase the resolution of this image to 300 dpi, the standard for print. However, do not change anything else. Supprime les imperfections de contour et rend la photo bien nette. Revois les lumières et tout ça doit être comme prise avec un iPhone 14 Pro Max.",
       image_input: [imageUrl],
       aspect_ratio: aspectRatio,
       resolution,
