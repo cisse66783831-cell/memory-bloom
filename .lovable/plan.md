@@ -1,89 +1,124 @@
 
-## Correction de l'affichage des images avant/après validation
+## Diagnostic et Correction Complète du Flux de Génération
 
-### Problèmes identifiés
+### Ce qui se passe actuellement
 
-**1. Côté Admin (`AdminPhotosTable`) :**
-- Le bouton "Voir" (icône œil) n'a aucune action connectée — il est vide (`<Button variant="ghost" size="icon" title="Voir"><Eye /></Button>`)
-- Il n'existe aucune modal de prévisualisation côté admin
-- Les colonnes "Aperçu" et "Final" montrent seulement un ✓ ou ✗, pas d'image réelle
-- Aucune URL signée n'est jamais générée pour l'admin
+Voici le flux complet avec les 3 bugs identifiés :
 
-**2. Côté Utilisateur (`PhotosSection`) :**
-- La logique est correcte en théorie (URL signée générée via `createSignedUrl`)
-- Mais si le bucket `photos` a des restrictions RLS sur `storage.objects`, les URLs signées peuvent échouer silencieusement
-- La modal affiche "Impossible de charger l'aperçu" quand `previewUrl` est null
-
-### Solution
-
-#### Partie 1 : Admin — Ajouter une modal de prévisualisation
-
-Modifier `src/components/admin/AdminPhotosTable.tsx` pour :
-
-1. Importer `supabase` et `Dialog`
-2. Ajouter un état `selectedPhoto` et `previewUrls` (avant + après)
-3. Connecter le bouton "Voir" pour ouvrir une modal
-4. Dans la modal : générer 2 URLs signées (original via `original_image_path` + restauré via `restored_image_path` ou `preview_image_path`)
-5. Afficher les deux images côte à côte (avant / après) avec un label clair
-
-**Structure de la modal admin :**
-```
-┌─────────────────────────────────────┐
-│  Aperçu de la restauration          │
-│  ID: abc123...  Status: Aperçu prêt │
-├──────────────┬──────────────────────┤
-│  AVANT       │  APRÈS               │
-│  [image]     │  [image]             │
-│              │  (watermark si non   │
-│              │   payé)              │
-└──────────────┴──────────────────────┘
+```text
+User upload photo
+       ↓
+Trial 1 : nano-banana (google/nano-banana-pro)
+  → Appelle /v1/predictions avec "version: hash"
+  → Replicate répond ERREUR (mauvais endpoint)
+  → status = "failed", preview_image_path = NULL
+  → L'user voit "Échec" immédiatement
+       ↓
+Trial 2 : flux-kontext (flux-kontext-apps/restore-image)
+  → Même problème d'endpoint deployment
+  → status = "failed" à nouveau
+       ↓
+Après paiement admin
+  → Tente de charger "combo-model"
+  → N'existe pas dans la base de données
+  → status = "failed" encore
 ```
 
-Il faut aussi récupérer `original_image_path` dans la requête admin (actuellement absente du `select` dans `Admin.tsx`).
+---
 
-#### Partie 2 : Utilisateur — Fiabiliser l'affichage
+### Cause Racine : Les 3 Bugs
 
-La `PhotosSection` génère déjà des URLs signées correctement. Le problème probable est que les thumbnails utilisent `restored_image_path || preview_image_path` — si les deux sont null (restauration en cours ou échouée), rien ne s'affiche, ce qui est le comportement attendu.
+**Bug 1 — Mauvais endpoint API pour les modèles "deployment"**
 
-Cependant, vérifier que la modal utilisateur prend bien `preview_image_path` pour les photos en statut `preview_ready` (avant paiement) et `restored_image_path` pour les complètes. Le code actuel fait déjà `restored_image_path || preview_image_path` — c'est correct mais dans la modal on veut montrer l'aperçu watermarké avant paiement, donc on devrait préférer `preview_image_path` pour les non-payées.
+Replicate a deux types de modèles :
+- **Modèles versionnés** (ancien système) : on envoie `{ version: "hash" }` à `/v1/predictions`
+- **Modèles deployment** (nouveau système) : on envoie `{ input: ... }` à `/v1/models/{owner}/{model}/predictions`
 
-#### Fichiers modifiés
+`google/nano-banana-pro` et `flux-kontext-apps/restore-image` sont des **modèles deployment**. Le code actuel utilise toujours l'ancien endpoint → erreur 422 à chaque fois.
+
+**Bug 2 — `combo-model` inexistant en base**
+
+`final_hd_model_id = 'combo-model'` mais `combo-model` n'existe pas dans `ai_models_config`. Résultat : quand l'admin valide un paiement et que le système tente la génération HD, il ne trouve pas le modèle et échoue.
+
+**Bug 3 — `flux-kontext` actif mais modèle désactivé pour Trial 2**
+
+`trial_2_model_id = 'flux-kontext'` mais dans le code, la résolution de version pour `flux-kontext-apps/restore-image` va aussi utiliser l'ancien endpoint.
+
+---
+
+### Plan de Correction
+
+#### Tâche 1 — Corriger l'endpoint Replicate dans `restore-photo/index.ts`
+
+Modifier `runSingleModel` pour détecter automatiquement le type de modèle :
+
+- Si `replicateId` contient "/" et ne ressemble pas à un hash SHA-256 (64 caractères hexadécimaux) → utiliser le **nouvel endpoint deployment**
+- Sinon → continuer avec l'ancien endpoint
+
+```text
+replicateId = "google/nano-banana-pro"
+  → contient "/"
+  → n'est pas un hash
+  → utiliser POST /v1/models/google/nano-banana-pro/predictions
+     avec body { input: modelInput }
+
+replicateId = "c75db81..."  (hash 64 chars)
+  → utiliser POST /v1/predictions
+     avec body { version: hash, input: modelInput }
+```
+
+Même correction pour le mode non-preview (webhook) aux lignes 378-407 du fichier.
+
+#### Tâche 2 — Remplacer `combo-model` par `nano-banana` pour la HD finale
+
+Migration SQL :
+```sql
+UPDATE app_settings SET value = 'nano-banana' WHERE key = 'final_hd_model_id';
+```
+
+Ainsi, après validation du paiement, le système utilisera `nano-banana` (qui génère déjà en 2K) pour la version HD — c'est le même modèle mais avec `previewMode = false` ce qui donnera `resolution = "2K"`.
+
+#### Tâche 3 — Corriger `resolveVersion` pour les modèles deployment
+
+La fonction `resolveVersion` tente de récupérer le `latest_version.id` d'un modèle deployment — mais ces modèles n'ont pas de `latest_version` au sens classique. Il faut court-circuiter cette fonction pour les modèles deployment :
+
+```typescript
+async function resolveVersion(replicateId: string, apiToken: string): Promise<string | null> {
+  if (!replicateId.includes("/")) return replicateId; // déjà un hash
+  // Pour les modèles deployment (owner/model), pas besoin de résolution
+  // On retourne null pour signaler "utiliser l'endpoint deployment"
+  return null;
+}
+```
+
+#### Tâche 4 — Adapter le mode webhook pour les modèles deployment
+
+Aux lignes 378-407, le code non-preview (avec webhook) utilise aussi l'ancien endpoint. Il faut appliquer la même logique de détection.
+
+---
+
+### Fichiers à Modifier
 
 | Fichier | Modification |
 |---------|-------------|
-| `src/components/admin/AdminPhotosTable.tsx` | Ajout modal avant/après avec URLs signées |
-| `src/pages/Admin.tsx` | Ajouter `original_image_path` dans le select des restorations |
-| `src/components/dashboard/PhotosSection.tsx` | Corriger l'ordre de préférence des chemins dans la modal (preview_image_path pour les non-payées) |
+| `supabase/functions/restore-photo/index.ts` | Corriger les 2 endpoints (sync + webhook) pour les modèles deployment |
+| Migration SQL | Changer `final_hd_model_id` de `combo-model` vers `nano-banana` |
 
-### Détails techniques
+### Résultat Attendu
 
-**Génération des URLs signées dans AdminPhotosTable :**
-```typescript
-const openPreview = async (photo: PhotoRestoration) => {
-  setPreviewOpen(true);
-  setPreviewPhoto(photo);
-  setPreviewUrls({ before: null, after: null });
+Après correction :
 
-  // URL "avant" depuis original_image_path
-  if (photo.original_image_path) {
-    const { data } = await supabase.storage.from("photos").createSignedUrl(photo.original_image_path, 3600);
-    if (data?.signedUrl) setPreviewUrls(prev => ({ ...prev, before: data.signedUrl }));
-  }
-
-  // URL "après" depuis restored_image_path ou preview_image_path
-  const afterPath = photo.restored_image_path || photo.preview_image_path;
-  if (afterPath) {
-    const { data } = await supabase.storage.from("photos").createSignedUrl(afterPath, 3600);
-    if (data?.signedUrl) setPreviewUrls(prev => ({ ...prev, after: data.signedUrl }));
-  }
-};
+```text
+User upload photo
+       ↓
+Trial 1 : nano-banana → /v1/models/google/nano-banana-pro/predictions ✅
+  → preview_image_path sauvegardé
+  → status = "preview_ready"
+  → L'user voit l'aperçu watermarké ✅
+       ↓ (si note ≤ 3)
+Trial 2 : flux-kontext → /v1/models/flux-kontext-apps/restore-image/predictions ✅
+  → 2ème aperçu disponible ✅
+       ↓ (après paiement validé)
+Génération HD : nano-banana en 2K → résultat HD sauvegardé ✅
+  → Bouton Télécharger disponible ✅
 ```
-
-**Ajout du champ manquant dans Admin.tsx :**
-```typescript
-supabase
-  .from("photo_restorations")
-  .select("id, created_at, status, is_paid, user_id, session_id, preview_image_path, restored_image_path, original_image_path")
-```
-
-Et mettre à jour l'interface `Restoration` en conséquence pour inclure `original_image_path: string | null`.
