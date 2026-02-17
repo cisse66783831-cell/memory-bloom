@@ -40,6 +40,7 @@ interface Restoration {
   session_id: string;
   preview_image_path: string | null;
   restored_image_path: string | null;
+  original_image_path: string | null;
 }
 
 interface Payment {
@@ -97,7 +98,7 @@ const Admin = () => {
       const [restorationsRes, paymentsRes, usersRes] = await Promise.all([
         supabase
           .from("photo_restorations")
-          .select("id, created_at, status, is_paid, user_id, session_id, preview_image_path, restored_image_path")
+          .select("id, created_at, status, is_paid, user_id, session_id, preview_image_path, restored_image_path, original_image_path")
           .order("created_at", { ascending: false }),
         supabase
           .from("payments")
