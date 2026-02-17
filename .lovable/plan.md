@@ -1,124 +1,158 @@
 
-## Diagnostic et Correction Complète du Flux de Génération
+## Simplification Totale du Flux : Générer Une Seule Fois, Stocker, puis Débloquer
 
-### Ce qui se passe actuellement
+### Ce que vous voulez (et c'est la bonne logique)
 
-Voici le flux complet avec les 3 bugs identifiés :
-
-```text
-User upload photo
-       ↓
-Trial 1 : nano-banana (google/nano-banana-pro)
-  → Appelle /v1/predictions avec "version: hash"
-  → Replicate répond ERREUR (mauvais endpoint)
-  → status = "failed", preview_image_path = NULL
-  → L'user voit "Échec" immédiatement
-       ↓
-Trial 2 : flux-kontext (flux-kontext-apps/restore-image)
-  → Même problème d'endpoint deployment
-  → status = "failed" à nouveau
-       ↓
-Après paiement admin
-  → Tente de charger "combo-model"
-  → N'existe pas dans la base de données
-  → status = "failed" encore
+```
+1. L'user upload sa photo + choisit le format
+         ↓
+2. On génère UNE SEULE FOIS en nano-banana 2K
+   → Image stockée dans Supabase Storage
+   → Affichée avec filigrane à l'user ET à l'admin
+         ↓
+3. L'user soumet son paiement
+   → L'admin voit la photo (avant + après avec filigrane)
+   → L'admin valide le paiement
+         ↓
+4. La même image déjà générée devient accessible sans filigrane
+   → L'user peut la télécharger directement
+   → Aucune nouvelle génération IA
 ```
 
----
+### Problèmes dans le code actuel
 
-### Cause Racine : Les 3 Bugs
+**Problème 1 — Le flux distingue "preview" et "HD final"**
+- Quand `previewMode: true` → génère en 1K avec `aspect_ratio: "match_input_image"`
+- Quand l'admin valide → re-génère en 2K avec le bon format
+- Ce double-passage crée des échecs et de la confusion
 
-**Bug 1 — Mauvais endpoint API pour les modèles "deployment"**
+**Problème 2 — L'admin déclenche une 2ème génération IA inutile**
+Dans `process-payment/index.ts` lignes 89-116 :
+```typescript
+// === TRIGGER AI RESTORATION after payment validated ===
+if (restoration && restoration.status !== "completed") {
+  // RE-GÉNÈRE toute l'image... inutile !
+  await fetch(`${SUPABASE_URL}/functions/v1/restore-photo`, ...)
+}
+```
+Cette re-génération est ce qui cause le bouton "Échec" après validation admin.
 
-Replicate a deux types de modèles :
-- **Modèles versionnés** (ancien système) : on envoie `{ version: "hash" }` à `/v1/predictions`
-- **Modèles deployment** (nouveau système) : on envoie `{ input: ... }` à `/v1/models/{owner}/{model}/predictions`
+**Problème 3 — La preview est en 1K sans le bon format**
+L'aperçu actuel utilise `resolution: "1K"` et `aspect_ratio: "match_input_image"` peu importe le choix de l'user — donc même si le paiement fonctionnait, la version finale serait différente de l'aperçu.
 
-`google/nano-banana-pro` et `flux-kontext-apps/restore-image` sont des **modèles deployment**. Le code actuel utilise toujours l'ancien endpoint → erreur 422 à chaque fois.
-
-**Bug 2 — `combo-model` inexistant en base**
-
-`final_hd_model_id = 'combo-model'` mais `combo-model` n'existe pas dans `ai_models_config`. Résultat : quand l'admin valide un paiement et que le système tente la génération HD, il ne trouve pas le modèle et échoue.
-
-**Bug 3 — `flux-kontext` actif mais modèle désactivé pour Trial 2**
-
-`trial_2_model_id = 'flux-kontext'` mais dans le code, la résolution de version pour `flux-kontext-apps/restore-image` va aussi utiliser l'ancien endpoint.
+**Problème 4 — Le filigrane est côté frontend uniquement**
+Le filigrane REVIVO est superposé par CSS dans le navigateur — ce n'est pas dans l'image stockée. C'est OK car l'image réelle (sans filigrane) est déjà stockée en HD, on bloque juste l'accès.
 
 ---
 
 ### Plan de Correction
 
-#### Tâche 1 — Corriger l'endpoint Replicate dans `restore-photo/index.ts`
+#### Tâche 1 — Modifier `restore-photo` : toujours générer en 2K avec le bon format dès le départ
 
-Modifier `runSingleModel` pour détecter automatiquement le type de modèle :
+Dans `supabase/functions/restore-photo/index.ts` :
 
-- Si `replicateId` contient "/" et ne ressemble pas à un hash SHA-256 (64 caractères hexadécimaux) → utiliser le **nouvel endpoint deployment**
-- Sinon → continuer avec l'ancien endpoint
-
-```text
-replicateId = "google/nano-banana-pro"
-  → contient "/"
-  → n'est pas un hash
-  → utiliser POST /v1/models/google/nano-banana-pro/predictions
-     avec body { input: modelInput }
-
-replicateId = "c75db81..."  (hash 64 chars)
-  → utiliser POST /v1/predictions
-     avec body { version: hash, input: modelInput }
-```
-
-Même correction pour le mode non-preview (webhook) aux lignes 378-407 du fichier.
-
-#### Tâche 2 — Remplacer `combo-model` par `nano-banana` pour la HD finale
-
-Migration SQL :
-```sql
-UPDATE app_settings SET value = 'nano-banana' WHERE key = 'final_hd_model_id';
-```
-
-Ainsi, après validation du paiement, le système utilisera `nano-banana` (qui génère déjà en 2K) pour la version HD — c'est le même modèle mais avec `previewMode = false` ce qui donnera `resolution = "2K"`.
-
-#### Tâche 3 — Corriger `resolveVersion` pour les modèles deployment
-
-La fonction `resolveVersion` tente de récupérer le `latest_version.id` d'un modèle deployment — mais ces modèles n'ont pas de `latest_version` au sens classique. Il faut court-circuiter cette fonction pour les modèles deployment :
+- **Supprimer la logique `previewMode`** qui changeait la résolution et le format
+- **Toujours utiliser** `resolution: "2K"` et le `aspectRatio` reçu
+- Le chemin de stockage sera toujours `preview/{date}/{id}_t{n}.png` (même path)
+- L'image générée une seule fois = cette image est l'aperçu watermarqué ET le final HD — c'est la même
 
 ```typescript
-async function resolveVersion(replicateId: string, apiToken: string): Promise<string | null> {
-  if (!replicateId.includes("/")) return replicateId; // déjà un hash
-  // Pour les modèles deployment (owner/model), pas besoin de résolution
-  // On retourne null pour signaler "utiliser l'endpoint deployment"
-  return null;
-}
+// AVANT (2 résolutions différentes)
+const outputResolution = previewMode ? "1K" : "2K";
+const outputAspectRatio = previewMode ? "match_input_image" : aspectRatio;
+
+// APRÈS (toujours HD dès le départ)
+const outputResolution = "2K";
+const outputAspectRatio = aspectRatio;
 ```
 
-#### Tâche 4 — Adapter le mode webhook pour les modèles deployment
+- Toujours stocker dans `preview/{date}/{id}_t{n}.png` (pas besoin du path "restored" séparé)
+- Toujours mettre `status: "preview_ready"` et `preview_image_path: storagePath`
 
-Aux lignes 378-407, le code non-preview (avec webhook) utilise aussi l'ancien endpoint. Il faut appliquer la même logique de détection.
+#### Tâche 2 — Modifier `process-payment` : supprimer la re-génération IA après validation
+
+Dans `supabase/functions/process-payment/index.ts`, remplacer le bloc "TRIGGER AI RESTORATION" (lignes 89-116) par une logique simple :
+
+```typescript
+// APRÈS validation admin : on marque juste la restoration comme "completed"
+// et on copie preview_image_path dans restored_image_path (même fichier)
+await supabase
+  .from("photo_restorations")
+  .update({
+    status: "completed",
+    restored_image_path: restoration.preview_image_path, // même image !
+  })
+  .eq("id", payment.restoration_id);
+```
+
+Cela signifie :
+- Aucune nouvelle génération IA = 0 risque d'échec
+- L'image déjà générée devient simplement accessible
+- `restored_image_path` pointe vers le même fichier que `preview_image_path`
+
+#### Tâche 3 — Adapter `RestorationContext` : passer le format dès le premier appel
+
+Dans `src/contexts/RestorationContext.tsx`, lors de l'upload (ligne 136-147), envoyer le `outputFormat` choisi :
+
+```typescript
+body: {
+  restorationId: restoration.id,
+  imageBase64: base64,
+  colorize: state.colorize,
+  previewMode: true, // gardé pour compatibilité mais ignoré côté serveur
+  aspectRatio: state.outputFormat, // NOUVEAU — format choisi par l'user
+  trialNumber: 1,
+},
+```
+
+Mais le format est choisi APRÈS la génération (sur l'écran de comparaison)... Donc deux options :
+
+**Option A (recommandée)** : Déplacer le sélecteur de format sur l'écran d'upload, AVANT la génération, pour que le format soit connu dès le départ.
+
+**Option B** : Conserver le format sur l'écran de comparaison mais régénérer si le format change (complexe).
+
+Nous allons faire l'**Option A** : ajouter le sélecteur de format dans `PhotoUploader.tsx` (ou directement dans la section upload de `Index.tsx`), et le passer lors de `uploadPhoto()`.
+
+#### Tâche 4 — Adapter `checkPaymentStatus` dans `RestorationContext`
+
+Actuellement, après validation admin, le contexte attend `restoration.status === "completed"` ET `restoration.restored_image_path`. Avec notre nouvelle logique, ces deux conditions seront bien remplies (le path est copié depuis preview). Aucune modification nécessaire.
+
+#### Tâche 5 — Simplifier le `PhotosSection` utilisateur
+
+La logique de retry/trial (essai 1, essai 2...) devient inutile puisqu'on génère une seule fois. Simplifier :
+
+- Supprimer la logique `isFailed` basée sur `trial_number >= MAX_TRIALS`
+- Un seul état : `failed` = vraiment échoué
+- `preview_ready` = image disponible, en attente de paiement
+- `completed` = payé, téléchargeable
 
 ---
 
-### Fichiers à Modifier
+### Résumé des fichiers modifiés
 
 | Fichier | Modification |
 |---------|-------------|
-| `supabase/functions/restore-photo/index.ts` | Corriger les 2 endpoints (sync + webhook) pour les modèles deployment |
-| Migration SQL | Changer `final_hd_model_id` de `combo-model` vers `nano-banana` |
+| `supabase/functions/restore-photo/index.ts` | Toujours générer en 2K avec le bon format, supprimer la différence preview/HD |
+| `supabase/functions/process-payment/index.ts` | Supprimer la re-génération IA, juste copier preview_path → restored_path + status "completed" |
+| `src/contexts/RestorationContext.tsx` | Passer le format choisi lors de uploadPhoto |
+| `src/pages/Index.tsx` | Déplacer le sélecteur de format AVANT la génération (sur l'écran upload) |
+| `src/components/dashboard/PhotosSection.tsx` | Simplifier la logique d'état |
 
-### Résultat Attendu
+### Résultat attendu
 
-Après correction :
-
-```text
-User upload photo
+```
+User upload + choisit format (Original/Carré/Story...)
        ↓
-Trial 1 : nano-banana → /v1/models/google/nano-banana-pro/predictions ✅
-  → preview_image_path sauvegardé
-  → status = "preview_ready"
-  → L'user voit l'aperçu watermarké ✅
-       ↓ (si note ≤ 3)
-Trial 2 : flux-kontext → /v1/models/flux-kontext-apps/restore-image/predictions ✅
-  → 2ème aperçu disponible ✅
-       ↓ (après paiement validé)
-Génération HD : nano-banana en 2K → résultat HD sauvegardé ✅
-  → Bouton Télécharger disponible ✅
+Une seule génération nano-banana 2K avec ce format ✅
+Image stockée dans preview/{id}.png
+       ↓
+User voit l'aperçu avec filigrane CSS (image HD stockée) ✅
+Admin voit avant/après dans son tableau ✅
+       ↓
+User soumet paiement (numéro de dépôt)
+Admin valide → restored_image_path = preview_image_path ✅
+status = "completed", is_paid = true
+       ↓
+User voit le bouton TÉLÉCHARGER → même image, sans filigrane CSS ✅
+Aucune 2ème génération IA, zéro risque d'échec ✅
 ```
