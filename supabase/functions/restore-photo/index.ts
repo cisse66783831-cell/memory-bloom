@@ -14,6 +14,18 @@ interface ModelConfig {
   systemPrompt: string | null;
 }
 
+/**
+ * Detect if a replicateId is a "deployment" model (owner/model format)
+ * vs a legacy version hash (64-char hex string).
+ * Deployment models use a different API endpoint.
+ */
+function isDeploymentModel(replicateId: string): boolean {
+  if (!replicateId.includes("/")) return false;
+  // A SHA-256 hash is exactly 64 hex characters — those are NOT deployment models
+  if (/^[a-f0-9]{64}$/i.test(replicateId)) return false;
+  return true;
+}
+
 async function getModelConfig(supabase: any, modelId: string): Promise<ModelConfig | null> {
   const { data: model } = await supabase
     .from("ai_models_config")
@@ -73,7 +85,6 @@ async function getModelForTrial(supabase: any, trialNumber: number, previewMode:
 
 function buildModelInput(modelId: string, imageUrl: string, prompt: string, previewMode: boolean, aspectRatio: string, resolution: string, isComboStep = false): Record<string, any> {
   if (modelId === "flux-kontext") {
-    // Flux Kontext uses "input_image" (string) + safety_tolerance
     return {
       input_image: imageUrl,
       output_format: "png",
@@ -101,14 +112,20 @@ function buildModelInput(modelId: string, imageUrl: string, prompt: string, prev
   } else if (modelId === "codeformer") {
     return { image: imageUrl, codeformer_fidelity: 0.7, upscale: isComboStep ? 1 : (previewMode ? 1 : 2) };
   } else {
-    // microsoft and others: standard "image" field
     return { image: imageUrl };
   }
 }
 
-// Resolve owner/model to latest version hash
-async function resolveVersion(replicateId: string, apiToken: string): Promise<string> {
-  if (!replicateId.includes("/")) return replicateId; // already a hash
+/**
+ * Resolve owner/model to latest version hash — ONLY for legacy versioned models.
+ * For deployment models (owner/model format), returns null to signal "use deployment endpoint".
+ */
+async function resolveVersion(replicateId: string, apiToken: string): Promise<string | null> {
+  // Already a hash — use as-is with legacy endpoint
+  if (!replicateId.includes("/")) return replicateId;
+  // Deployment model — no version resolution needed, use deployment endpoint
+  if (isDeploymentModel(replicateId)) return null;
+  // Legacy owner/model — resolve to version hash
   const [owner, model] = replicateId.split("/");
   const resp = await fetch(`https://api.replicate.com/v1/models/${owner}/${model}`, {
     headers: { Authorization: `Bearer ${apiToken}` },
@@ -121,21 +138,41 @@ async function resolveVersion(replicateId: string, apiToken: string): Promise<st
   return version;
 }
 
-const MAX_POLL_TIME = 120_000; // 2 minutes max
-
-async function runSingleModel(
-  replicateId: string, modelId: string, modelInput: Record<string, any>,
-  apiToken: string, webhookUrl: string | undefined, useWebhook: boolean,
-  resolvedVersionHash?: string
-): Promise<{ outputUrl: string; predictionId: string }> {
-  // Use pre-resolved version if provided, otherwise resolve
-  const version = resolvedVersionHash || await resolveVersion(replicateId, apiToken);
-  const body: any = { version, input: modelInput };
-
+/**
+ * Build the correct Replicate API call depending on model type:
+ * - Deployment models (owner/model format): POST /v1/models/{owner}/{model}/predictions with { input }
+ * - Legacy versioned models: POST /v1/predictions with { version, input }
+ */
+async function callReplicateAPI(
+  replicateId: string,
+  modelInput: Record<string, any>,
+  apiToken: string,
+  webhookUrl?: string,
+  useWebhook = false,
+  resolvedVersionHash?: string | null
+): Promise<any> {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${apiToken}`,
     "Content-Type": "application/json",
   };
+
+  let apiUrl: string;
+  let body: any;
+
+  const deployment = isDeploymentModel(replicateId);
+
+  if (deployment) {
+    // New endpoint for deployment models: no version needed
+    apiUrl = `https://api.replicate.com/v1/models/${replicateId}/predictions`;
+    body = { input: modelInput };
+    console.log(`Using DEPLOYMENT endpoint: ${apiUrl}`);
+  } else {
+    // Legacy endpoint: requires version hash
+    const version = resolvedVersionHash ?? replicateId; // if no hash provided, use as-is
+    apiUrl = "https://api.replicate.com/v1/predictions";
+    body = { version, input: modelInput };
+    console.log(`Using VERSIONED endpoint with version: ${version}`);
+  }
 
   if (useWebhook && webhookUrl) {
     body.webhook = webhookUrl;
@@ -144,7 +181,7 @@ async function runSingleModel(
     headers["Prefer"] = "wait";
   }
 
-  const createResponse = await fetch("https://api.replicate.com/v1/predictions", {
+  const createResponse = await fetch(apiUrl, {
     method: "POST", headers, body: JSON.stringify(body),
   });
 
@@ -153,7 +190,22 @@ async function runSingleModel(
     throw new Error(`Replicate API error: ${createResponse.status} - ${errorText}`);
   }
 
-  let prediction = await createResponse.json();
+  return await createResponse.json();
+}
+
+const MAX_POLL_TIME = 120_000; // 2 minutes max
+
+async function runSingleModel(
+  replicateId: string, modelId: string, modelInput: Record<string, any>,
+  apiToken: string, webhookUrl: string | undefined, useWebhook: boolean,
+  resolvedVersionHash?: string | null
+): Promise<{ outputUrl: string; predictionId: string }> {
+  let prediction = await callReplicateAPI(
+    replicateId, modelInput, apiToken,
+    useWebhook ? webhookUrl : undefined,
+    useWebhook,
+    resolvedVersionHash
+  );
 
   if (useWebhook && webhookUrl) {
     return { outputUrl: "", predictionId: prediction.id };
@@ -216,7 +268,7 @@ serve(async (req) => {
 
     // Get model dynamically
     const modelConfig = await getModelForTrial(supabase, trialNumber, previewMode);
-    console.log(`Using model: ${modelConfig.modelId} (${modelConfig.replicateId}) - trial ${trialNumber}, preview: ${previewMode}`);
+    console.log(`Using model: ${modelConfig.modelId} (${modelConfig.replicateId}) - trial ${trialNumber}, preview: ${previewMode}, deployment: ${isDeploymentModel(modelConfig.replicateId)}`);
 
     // Update used_model_id
     await supabase
@@ -289,7 +341,6 @@ serve(async (req) => {
     if (modelConfig.modelId === "combo-model") {
       console.log("🔥 COMBO MODE ACTIVATED");
 
-      // Get pipeline steps from app_settings
       const { data: comboSetting } = await supabase
         .from("app_settings")
         .select("value")
@@ -313,27 +364,27 @@ serve(async (req) => {
         }
 
         const stepPrompt = stepConfig.systemPrompt || (defaultPrompt + colorizeAddition);
-        // isComboStep = true to limit upscale and avoid GPU memory overflow
         const stepInput = buildModelInput(stepModelId, currentImageUrl, stepPrompt, previewMode, outputAspectRatio, outputResolution, true);
 
-        console.log(`Combo step ${i + 1}/${pipelineSteps.length}: ${stepModelId}`);
+        console.log(`Combo step ${i + 1}/${pipelineSteps.length}: ${stepModelId} (${stepConfig.replicateId})`);
+
+        // Resolve version for this step (null for deployment models)
+        const stepVersion = await resolveVersion(stepConfig.replicateId, REPLICATE_API_TOKEN);
 
         const result = await runSingleModel(
           stepConfig.replicateId, stepModelId, stepInput,
-          REPLICATE_API_TOKEN, REPLICATE_WEBHOOK_URL, false // always sync for combo
+          REPLICATE_API_TOKEN, REPLICATE_WEBHOOK_URL, false, // always sync for combo
+          stepVersion
         );
 
-        // Use the output as input for the next step
         currentImageUrl = result.outputUrl;
 
-        // Increment runs for this step model
         try {
           const { data: sm } = await supabase.from("ai_models_config").select("total_runs").eq("id", stepModelId).single();
           if (sm) await supabase.from("ai_models_config").update({ total_runs: (sm.total_runs || 0) + 1 }).eq("id", stepModelId);
         } catch { /* ignore */ }
       }
 
-      // Download final result and upload
       const imageResponse = await fetch(currentImageUrl);
       if (!imageResponse.ok) throw new Error("Failed to download combo result");
       const imageBuffer = new Uint8Array(await imageResponse.arrayBuffer());
@@ -371,30 +422,20 @@ serve(async (req) => {
     const fullPrompt = (modelConfig.systemPrompt || defaultPrompt) + colorizeAddition;
     const modelInput = buildModelInput(modelConfig.modelId, imageUrl, fullPrompt, previewMode, outputAspectRatio, outputResolution);
 
-    // Resolve version once for standard mode
+    // Resolve version (returns null for deployment models, hash for legacy models)
     const resolvedVersion = await resolveVersion(modelConfig.replicateId, REPLICATE_API_TOKEN);
 
-    // Non-preview: use webhook
+    // Non-preview: use webhook (async processing)
     if (!previewMode && REPLICATE_WEBHOOK_URL) {
-      const replicateBody: any = { version: resolvedVersion, input: modelInput };
-      replicateBody.webhook = REPLICATE_WEBHOOK_URL;
-      replicateBody.webhook_events_filter = ["completed"];
+      const prediction = await callReplicateAPI(
+        modelConfig.replicateId,
+        modelInput,
+        REPLICATE_API_TOKEN,
+        REPLICATE_WEBHOOK_URL,
+        true, // useWebhook
+        resolvedVersion
+      );
 
-      const createResponse = await fetch("https://api.replicate.com/v1/predictions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${REPLICATE_API_TOKEN}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(replicateBody),
-      });
-
-      if (!createResponse.ok) {
-        const errorText = await createResponse.text();
-        throw new Error(`Replicate API error: ${createResponse.status} - ${errorText}`);
-      }
-
-      const prediction = await createResponse.json();
       await supabase
         .from("photo_restorations")
         .update({ replicate_prediction_id: prediction.id })
@@ -406,8 +447,11 @@ serve(async (req) => {
       );
     }
 
-    // Preview: synchronous polling — pass resolved version to avoid double resolve
-    const result = await runSingleModel(modelConfig.replicateId, modelConfig.modelId, modelInput, REPLICATE_API_TOKEN, undefined, false, resolvedVersion);
+    // Preview: synchronous polling
+    const result = await runSingleModel(
+      modelConfig.replicateId, modelConfig.modelId, modelInput,
+      REPLICATE_API_TOKEN, undefined, false, resolvedVersion
+    );
 
     const imageResponse = await fetch(result.outputUrl);
     if (!imageResponse.ok) throw new Error("Failed to download restored image");
@@ -442,7 +486,6 @@ serve(async (req) => {
   } catch (error) {
     console.error("Restore photo error:", error);
 
-    // FIX: Update status to "failed" so UI is not stuck on "processing"
     if (restorationId && supabase) {
       try {
         await supabase
