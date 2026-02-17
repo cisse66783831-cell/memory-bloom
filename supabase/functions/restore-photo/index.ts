@@ -326,8 +326,9 @@ serve(async (req) => {
       imageUrl = `data:image/jpeg;base64,${base64String}`;
     }
 
-    const outputAspectRatio = previewMode ? "match_input_image" : aspectRatio;
-    const outputResolution = previewMode ? "1K" : "2K";
+    // Always generate in 2K with the requested aspect ratio — no preview/HD distinction
+    const outputAspectRatio = aspectRatio;
+    const outputResolution = "2K";
 
     // Build prompt: use model's system_prompt if available, otherwise default
     const defaultPrompt = "Increase the resolution of this image to 300 dpi, the standard for print. However, do not change anything else. Remove all edge imperfections and make the photo sharp and clear. Adjust the lighting and overall quality so it looks like it was taken with an iPhone 14 Pro Max camera — natural colors, precise details, balanced exposure, and professional-grade sharpness.";
@@ -425,29 +426,7 @@ serve(async (req) => {
     // Resolve version (returns null for deployment models, hash for legacy models)
     const resolvedVersion = await resolveVersion(modelConfig.replicateId, REPLICATE_API_TOKEN);
 
-    // Non-preview: use webhook (async processing)
-    if (!previewMode && REPLICATE_WEBHOOK_URL) {
-      const prediction = await callReplicateAPI(
-        modelConfig.replicateId,
-        modelInput,
-        REPLICATE_API_TOKEN,
-        REPLICATE_WEBHOOK_URL,
-        true, // useWebhook
-        resolvedVersion
-      );
-
-      await supabase
-        .from("photo_restorations")
-        .update({ replicate_prediction_id: prediction.id })
-        .eq("id", restorationId);
-
-      return new Response(
-        JSON.stringify({ success: true, message: "Processing started", predictionId: prediction.id }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Preview: synchronous polling
+    // Always synchronous polling — single generation, store once
     const result = await runSingleModel(
       modelConfig.replicateId, modelConfig.modelId, modelInput,
       REPLICATE_API_TOKEN, undefined, false, resolvedVersion
@@ -458,9 +437,7 @@ serve(async (req) => {
     const imageBuffer = new Uint8Array(await imageResponse.arrayBuffer());
 
     const dateFolder = new Date().toISOString().slice(0, 10);
-    const storagePath = previewMode
-      ? `preview/${dateFolder}/${restorationId}_t${trialNumber}.png`
-      : `restored/${dateFolder}/${restorationId}.png`;
+    const storagePath = `preview/${dateFolder}/${restorationId}_t${trialNumber}.png`;
 
     const { error: uploadError } = await supabase.storage
       .from("photos")
@@ -472,11 +449,11 @@ serve(async (req) => {
       .createSignedUrl(storagePath, 3600);
     if (signedError || !signedData?.signedUrl) throw new Error("Failed to generate preview URL");
 
-    const updateData = previewMode
-      ? { status: "preview_ready", preview_image_path: storagePath }
-      : { status: "completed", restored_image_path: storagePath, preview_image_path: storagePath };
-
-    await supabase.from("photo_restorations").update(updateData).eq("id", restorationId);
+    // Store the generated image as preview — same file will be used for HD download after payment
+    await supabase.from("photo_restorations").update({
+      status: "preview_ready",
+      preview_image_path: storagePath,
+    }).eq("id", restorationId);
 
     return new Response(
       JSON.stringify({ success: true, previewUrl: signedData.signedUrl, modelUsed: modelConfig.modelId }),

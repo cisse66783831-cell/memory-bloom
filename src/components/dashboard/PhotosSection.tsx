@@ -175,11 +175,9 @@ export const PhotosSection = forwardRef<HTMLDivElement>(function PhotosSection(_
     );
   }
 
-  const isFailed = (photo: Photo) =>
-    photo.status === "failed" || (photo.trial_number >= MAX_TRIALS && photo.user_rating !== null && photo.user_rating <= 3 && !photo.is_paid);
+  const isFailed = (photo: Photo) => photo.status === "failed";
 
-  const showWhatsApp = (photo: Photo) =>
-    !photo.is_paid && (photo.trial_number >= MAX_TRIALS || photo.status === "failed");
+  const showWhatsApp = (photo: Photo) => !photo.is_paid && photo.status === "failed";
 
   return (
     <>

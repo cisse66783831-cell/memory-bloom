@@ -86,33 +86,16 @@ serve(async (req) => {
         }
       }
 
-      // === TRIGGER AI RESTORATION after payment validated ===
-      if (restoration && restoration.status !== "completed") {
-        console.log("Triggering AI restoration for:", payment.restoration_id);
-        try {
-          const restoreResponse = await fetch(
-            `${SUPABASE_URL}/functions/v1/restore-photo`,
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                restorationId: payment.restoration_id,
-                colorize: false,
-                previewMode: false,
-                aspectRatio: outputFormat,
-              }),
-            }
-          );
-          const restoreResult = await restoreResponse.json();
-          if (!restoreResult.success) {
-            console.error("AI restoration failed after payment:", restoreResult.error);
-          }
-        } catch (restoreErr) {
-          console.error("Error triggering AI restoration:", restoreErr);
-        }
+      // === UNLOCK IMAGE: no new AI generation — just copy preview path to restored path ===
+      if (restoration && restoration.status !== "completed" && restoration.preview_image_path) {
+        console.log("Unlocking existing generated image for:", payment.restoration_id);
+        await supabase
+          .from("photo_restorations")
+          .update({
+            status: "completed",
+            restored_image_path: restoration.preview_image_path,
+          })
+          .eq("id", payment.restoration_id);
       }
 
       // Handle referral/partner rewards
@@ -208,42 +191,40 @@ serve(async (req) => {
           .update({ is_paid: true, payment_id: payment?.id })
           .eq("id", restorationId);
 
-        // Trigger AI restoration immediately (subscription = already paid)
-        console.log("Triggering AI restoration for subscription credit:", restorationId);
-        try {
-          const restoreResponse = await fetch(
-            `${SUPABASE_URL}/functions/v1/restore-photo`,
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                restorationId: restorationId,
-                colorize: false,
-                previewMode: false,
-                aspectRatio: outputFormat,
-              }),
-            }
-          );
-          const restoreResult = await restoreResponse.json();
-          if (restoreResult.success) {
+      // Unlock image immediately for subscription — no re-generation needed
+        const { data: currentRestoration } = await supabase
+          .from("photo_restorations")
+          .select("preview_image_path")
+          .eq("id", restorationId)
+          .single();
+
+        if (currentRestoration?.preview_image_path) {
+          await supabase
+            .from("photo_restorations")
+            .update({
+              status: "completed",
+              restored_image_path: currentRestoration.preview_image_path,
+            })
+            .eq("id", restorationId);
+
+          const { data: signedData } = await supabase.storage
+            .from("photos")
+            .createSignedUrl(currentRestoration.preview_image_path, 3600);
+
+          if (signedData?.signedUrl) {
             return new Response(
               JSON.stringify({
                 success: true,
                 paymentMethod: "subscription",
                 status: "completed",
                 downloadUrls: {
-                  png: restoreResult.previewUrl,
-                  pdf: restoreResult.previewUrl,
+                  png: signedData.signedUrl,
+                  pdf: signedData.signedUrl,
                 },
               }),
               { headers: { ...corsHeaders, "Content-Type": "application/json" } }
             );
           }
-        } catch (restoreErr) {
-          console.error("Error triggering AI restoration:", restoreErr);
         }
 
         return new Response(
