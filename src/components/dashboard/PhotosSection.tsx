@@ -91,9 +91,13 @@ export const PhotosSection = forwardRef<HTMLDivElement>(function PhotosSection(_
   }, [photos]);
 
   // Generate signed URL for modal preview
+  // For unpaid photos: prefer preview_image_path (watermarked version)
+  // For paid photos: use restored_image_path (HD version)
   useEffect(() => {
     if (!selectedPhoto) { setPreviewUrl(null); return; }
-    const path = selectedPhoto.restored_image_path || selectedPhoto.preview_image_path;
+    const path = selectedPhoto.is_paid
+      ? (selectedPhoto.restored_image_path || selectedPhoto.preview_image_path)
+      : (selectedPhoto.preview_image_path || selectedPhoto.restored_image_path);
     if (!path) { setPreviewUrl(null); return; }
     setPreviewLoading(true);
     supabase.storage
