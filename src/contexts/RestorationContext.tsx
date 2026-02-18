@@ -28,7 +28,7 @@ interface RestorationState {
 }
 
 interface RestorationContextType extends RestorationState {
-  uploadPhoto: (file: File, colorize?: boolean) => Promise<void>;
+  uploadPhoto: (file: File, colorize?: boolean, outputFormat?: OutputFormat) => Promise<void>;
   retryWithNewModel: () => Promise<void>;
   submitRating: (rating: number) => Promise<void>;
   processPayment: (promoCode?: string, depositMethod?: string, subscriptionPlanId?: string, senderPhone?: string) => Promise<void>;
@@ -83,8 +83,9 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({ ...prev, outputFormat }));
   }, []);
 
-  const uploadPhoto = useCallback(async (file: File, colorize: boolean = false) => {
+  const uploadPhoto = useCallback(async (file: File, colorize: boolean = false, outputFormat?: OutputFormat) => {
     try {
+      const currentFormat = outputFormat ?? state.outputFormat;
       setState((prev) => ({ 
         ...prev, 
         step: "processing", 
@@ -139,8 +140,8 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
           body: {
             restorationId: restoration.id,
             imageBase64: base64,
-            colorize: state.colorize,
-            aspectRatio: state.outputFormat,
+            colorize,
+            aspectRatio: currentFormat,
             trialNumber: 1,
           },
         }
@@ -213,7 +214,7 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
         error: error instanceof Error ? error.message : "Something went wrong",
       }));
     }
-  }, [state.sessionId, state.colorize]);
+  }, [state.sessionId, state.outputFormat]);
 
   const submitRating = useCallback(async (rating: number) => {
     if (!state.restorationId) return;
