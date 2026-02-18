@@ -152,13 +152,57 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
         throw new Error(result?.error || "Restoration failed");
       }
 
+      // restore-photo is now async (webhook-based) — poll until preview_ready
+      // Progress continues while we wait
+      const pollInterval = setInterval(() => {
+        setState((prev) => {
+          if (prev.progress >= 95) return prev;
+          return { ...prev, progress: Math.min(prev.progress + 3, 95) };
+        });
+      }, 2000);
+
+      let previewUrl: string | null = null;
+      let modelUsed: string | null = result.modelUsed || null;
+      const maxWait = 180_000; // 3 minutes
+      const pollStart = Date.now();
+
+      while (!previewUrl && Date.now() - pollStart < maxWait) {
+        await new Promise((r) => setTimeout(r, 3000));
+
+        const { data: dbRestoration } = await supabase
+          .from("photo_restorations")
+          .select("status, preview_image_path, used_model_id")
+          .eq("id", restoration.id)
+          .single();
+
+        if (dbRestoration?.status === "failed") {
+          clearInterval(pollInterval);
+          throw new Error("La restauration a échoué. Veuillez réessayer.");
+        }
+
+        if (dbRestoration?.status === "preview_ready" && dbRestoration.preview_image_path) {
+          // Generate signed URL
+          const { data: signed } = await supabase.storage
+            .from("photos")
+            .createSignedUrl(dbRestoration.preview_image_path, 3600);
+          previewUrl = signed?.signedUrl || null;
+          modelUsed = dbRestoration.used_model_id || modelUsed;
+        }
+      }
+
+      clearInterval(pollInterval);
+
+      if (!previewUrl) {
+        throw new Error("La génération a pris trop de temps. Veuillez réessayer.");
+      }
+
       setState((prev) => ({
         ...prev,
         step: "comparison",
         progress: 100,
-        previewImageUrl: result.previewUrl,
-        restoredImageUrl: result.previewUrl,
-        modelUsed: result.modelUsed || null,
+        previewImageUrl: previewUrl,
+        restoredImageUrl: previewUrl,
+        modelUsed,
       }));
 
     } catch (error) {

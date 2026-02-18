@@ -16,28 +16,28 @@ serve(async (req) => {
 
     console.log("Webhook received:", JSON.stringify({ id: payload.id, status: payload.status }));
 
-    if (payload.status !== "succeeded") {
-      console.log(`Prediction ${payload.id} status: ${payload.status}, ignoring.`);
-      
-      if (payload.status === "failed") {
-        const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
-        const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-        const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
-        await supabase
-          .from("photo_restorations")
-          .update({ status: "failed" })
-          .eq("replicate_prediction_id", payload.id);
-      }
+    if (payload.status === "failed") {
+      console.log(`Prediction ${payload.id} failed.`);
+      await supabase
+        .from("photo_restorations")
+        .update({ status: "failed" })
+        .eq("replicate_prediction_id", payload.id);
 
       return new Response(JSON.stringify({ ok: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
-    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+    if (payload.status !== "succeeded") {
+      console.log(`Prediction ${payload.id} status: ${payload.status}, ignoring.`);
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Find the restoration by prediction ID
     const { data: restoration, error: fetchError } = await supabase
@@ -54,7 +54,7 @@ serve(async (req) => {
       );
     }
 
-    // Get output URL
+    // Get output URL from Replicate response
     const outputUrl = Array.isArray(payload.output) ? payload.output[0] : payload.output;
 
     if (!outputUrl) {
@@ -74,12 +74,14 @@ serve(async (req) => {
     // Download the image from Replicate
     const imageResponse = await fetch(outputUrl);
     if (!imageResponse.ok) {
-      throw new Error("Failed to download restored image from Replicate");
+      throw new Error(`Failed to download restored image: ${imageResponse.status}`);
     }
     const imageBuffer = new Uint8Array(await imageResponse.arrayBuffer());
 
-    // Upload to Supabase Storage
-    const storagePath = `restored/${restoration.id}.png`;
+    // Store in preview/ folder — this is the single HD image used both for watermarked preview and final download
+    const dateFolder = new Date().toISOString().slice(0, 10);
+    const storagePath = `preview/${dateFolder}/${restoration.id}_t${restoration.trial_number || 1}.png`;
+
     const { error: uploadError } = await supabase.storage
       .from("photos")
       .upload(storagePath, imageBuffer, {
@@ -92,17 +94,16 @@ serve(async (req) => {
       throw new Error("Failed to upload restored image");
     }
 
-    // Update the restoration record
+    // Mark as preview_ready with the stored path
     await supabase
       .from("photo_restorations")
       .update({
-        status: "completed",
-        restored_image_path: storagePath,
+        status: "preview_ready",
         preview_image_path: storagePath,
       })
       .eq("id", restoration.id);
 
-    console.log(`Restoration ${restoration.id} completed via webhook.`);
+    console.log(`Restoration ${restoration.id} preview ready at ${storagePath}`);
 
     return new Response(
       JSON.stringify({ ok: true, restorationId: restoration.id }),
