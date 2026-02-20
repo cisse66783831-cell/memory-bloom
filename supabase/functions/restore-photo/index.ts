@@ -288,7 +288,7 @@ serve(async (req) => {
               ],
             },
           ],
-          max_tokens: 8192,
+          modalities: ["image", "text"],
         }),
       });
 
@@ -298,21 +298,39 @@ serve(async (req) => {
       }
 
       const orbitResult = await orbitResponse.json();
-      console.log("Orbit response received, parsing result...");
+      console.log("Orbit response keys:", JSON.stringify(Object.keys(orbitResult)));
+      if (orbitResult.choices?.[0]) {
+        const msg = orbitResult.choices[0].message;
+        console.log("Message keys:", JSON.stringify(Object.keys(msg || {})));
+        if (msg?.images) console.log("Images count:", msg.images.length);
+      }
 
-      // Extract image from response - Gemini image models return base64 in content
+      // Extract image from response
       let restoredImageData: string | null = null;
       const choices = orbitResult.choices || [];
       for (const choice of choices) {
-        const content = choice.message?.content;
+        const msg = choice.message;
+        // Format 1: images array (Gemini image models)
+        if (msg?.images && Array.isArray(msg.images)) {
+          for (const img of msg.images) {
+            if (img.image_url?.url) {
+              restoredImageData = img.image_url.url;
+              break;
+            }
+          }
+          if (restoredImageData) break;
+        }
+        // Format 2: content is string (base64 or URL)
+        const content = msg?.content;
         if (typeof content === "string") {
-          // Check if it's a base64 image or URL
           if (content.startsWith("data:image")) {
             restoredImageData = content;
           } else if (content.startsWith("http")) {
             restoredImageData = content;
           }
-        } else if (Array.isArray(content)) {
+        }
+        // Format 3: content is array with image parts
+        if (Array.isArray(content)) {
           for (const part of content) {
             if (part.type === "image_url" && part.image_url?.url) {
               restoredImageData = part.image_url.url;
@@ -321,6 +339,7 @@ serve(async (req) => {
             }
           }
         }
+        if (restoredImageData) break;
       }
 
       if (!restoredImageData) {
