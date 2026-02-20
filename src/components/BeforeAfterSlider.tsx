@@ -102,7 +102,7 @@ export function BeforeAfterSlider({
         <img
           src={afterImage}
           alt="Photo restaurée — résultat après traitement IA"
-          className="absolute inset-0 w-full h-full object-cover"
+          className="absolute inset-0 w-full h-full object-contain"
           draggable={false}
         />
 
@@ -114,7 +114,7 @@ export function BeforeAfterSlider({
           <img
             src={beforeImage}
             alt="Photo originale — avant restauration"
-            className="absolute inset-0 w-full h-full object-cover"
+            className="absolute inset-0 w-full h-full object-contain"
             draggable={false}
           />
         </div>

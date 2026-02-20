@@ -75,7 +75,7 @@ function IndexContent() {
     return () => clearInterval(interval);
   }, [paymentStatus, checkPaymentStatus]);
 
-  const handlePhotoSelected = async (file: File) => { await uploadPhoto(file); };
+  const handlePhotoSelected = async (file: File) => { await uploadPhoto(file, false, outputFormat); };
   const handlePayment = async (promoCode?: string, depositMethod?: string, subscriptionPlanId?: string, senderPhone?: string) => {
     setIsPaymentLoading(true);
     await processPayment(promoCode, depositMethod, subscriptionPlanId, senderPhone);
