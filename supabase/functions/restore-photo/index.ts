@@ -266,9 +266,12 @@ serve(async (req) => {
         .single();
       const orbitModel = orbitModelSetting?.value || "gemini-3-pro-image-preview";
 
-      console.log(`Orbit model: ${orbitModel}, URL: ${ORBIT_BASE_URL}`);
+      // Build the full API URL - append /v1/chat/completions if not already present
+      const baseUrl = ORBIT_BASE_URL.replace(/\/+$/, "");
+      const orbitApiUrl = baseUrl.includes("/v1/chat/completions") ? baseUrl : `${baseUrl}/v1/chat/completions`;
+      console.log(`Orbit model: ${orbitModel}, URL: ${orbitApiUrl}`);
 
-      const orbitResponse = await fetch(`${ORBIT_BASE_URL}`, {
+      const orbitResponse = await fetch(orbitApiUrl, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${ORBIT_AUTH_TOKEN}`,
