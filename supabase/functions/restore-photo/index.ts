@@ -6,7 +6,44 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const DEFAULT_PROMPT = "Increase the resolution of this image to 300 dpi, the standard for print. However, do not change anything else. Supprime les imperfections de contour et rend la photo bien nette. Revois les lumières et tout ça doit être comme prise avec un iPhone 14 Pro Max.";
+const DEFAULT_PROMPT = `You are a professional photo restoration and enhancement AI. Your task is to regenerate this photo realistically with the following strict rules:
+
+COMPOSITION & STRUCTURE (do not change):
+- Preserve the exact original composition, camera angle, subject position, and environment layout
+- Do not change the location or scene structure
+- Do not add or remove any objects
+
+SUBJECT ENHANCEMENT:
+- Regenerate the character/subject with photorealistic skin texture and details
+- Preserve the person identity and pose exactly
+- Remove all imperfections, blemishes, and artifacts from the subject
+- Natural, clean, realistic appearance
+
+ENVIRONMENT ENHANCEMENT:
+- Regenerate the environment keeping the same structure and object positions
+- Make surfaces look clean and new, remove noise and artifacts
+- Enhance material quality for a modern, realistic look
+
+IMAGE QUALITY:
+- Ultra high resolution, 300 DPI, print-ready quality
+- Ultra sharp details, remove all blur and compression artifacts
+- Professional quality output
+
+LIGHTING & COLOR:
+- Auto-correct white balance and optimize exposure
+- Enhance dynamic range with modern HDR processing
+- Natural color restoration and realistic color grading
+
+CAMERA SIMULATION:
+- Simulate iPhone 14 Pro Max photo processing style
+- Modern smartphone HDR, realistic depth and natural sharpness
+- Must look like a recent photo taken with a high-end smartphone
+
+OUTPUT:
+- Photorealistic style, brand new condition appearance
+- Modern, clean, recent photo look
+- Avoid any artificial or CGI look
+- Maximum quality, same format as input`;
 
 interface ModelConfig {
   replicateId: string;
