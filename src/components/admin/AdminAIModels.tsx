@@ -8,8 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Zap, Star, RefreshCw, Settings, BarChart3, ScrollText, Rocket } from "lucide-react";
+import { Loader2, Zap, Star, RefreshCw, Settings, BarChart3, ScrollText, Rocket, Globe } from "lucide-react";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 
@@ -38,6 +39,8 @@ export const AdminAIModels = () => {
   const { toast } = useToast();
   const [models, setModels] = useState<AIModel[]>([]);
   const [mode, setMode] = useState<string>("manual");
+  const [aiProvider, setAiProvider] = useState<string>("replicate");
+  const [orbitModel, setOrbitModel] = useState<string>("gemini-3-pro-image-preview");
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState<string | null>(null);
   const [logs, setLogs] = useState<OptLog[]>([]);
@@ -60,6 +63,8 @@ export const AdminAIModels = () => {
       const map: Record<string, string> = {};
       for (const s of settingsRes.data) map[s.key] = s.value;
       setMode(map["ai_management_mode"] || "manual");
+      setAiProvider(map["ai_provider"] || "replicate");
+      setOrbitModel(map["orbit_model"] || "gemini-3-pro-image-preview");
       setManualSettings({
         trial_1_model_id: map["trial_1_model_id"] || "",
         trial_2_model_id: map["trial_2_model_id"] || "",
@@ -154,6 +159,72 @@ export const AdminAIModels = () => {
 
   return (
     <div className="space-y-6">
+      {/* Provider Selection */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Globe className="h-5 w-5" />
+            Provider IA
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-4">
+            <Label className="text-sm font-medium min-w-[100px]">Provider actif</Label>
+            <Select
+              value={aiProvider}
+              onValueChange={async (val) => {
+                const { error } = await supabase
+                  .from("app_settings")
+                  .upsert({ key: "ai_provider", value: val, updated_at: new Date().toISOString() }, { onConflict: "key" });
+                if (!error) {
+                  setAiProvider(val);
+                  toast({ title: "Provider changé", description: val === "orbit" ? "Orbit activé" : "Replicate activé" });
+                }
+              }}
+            >
+              <SelectTrigger className="w-[200px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="replicate">Replicate</SelectItem>
+                <SelectItem value="orbit">Orbit (Gemini)</SelectItem>
+              </SelectContent>
+            </Select>
+            <Badge variant={aiProvider === "orbit" ? "default" : "secondary"}>
+              {aiProvider === "orbit" ? "Orbit" : "Replicate"}
+            </Badge>
+          </div>
+          {aiProvider === "orbit" && (
+            <div className="flex items-center gap-4 pt-2 border-t border-border/30">
+              <Label className="text-sm font-medium min-w-[100px]">Modèle Orbit</Label>
+              <Select
+                value={orbitModel}
+                onValueChange={async (val) => {
+                  const { error } = await supabase
+                    .from("app_settings")
+                    .upsert({ key: "orbit_model", value: val, updated_at: new Date().toISOString() }, { onConflict: "key" });
+                  if (!error) {
+                    setOrbitModel(val);
+                    toast({ title: "Modèle Orbit changé", description: val });
+                  }
+                }}
+              >
+                <SelectTrigger className="w-[300px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="gemini-3-pro-image-preview">Gemini 3 Pro Image (4K)</SelectItem>
+                  <SelectItem value="gemini-3-pro-preview">Gemini 3 Pro Preview</SelectItem>
+                  <SelectItem value="gemini-3-flash-preview">Gemini 3 Flash Preview</SelectItem>
+                  <SelectItem value="gemini-2.5-flash">Gemini 2.5 Flash</SelectItem>
+                  <SelectItem value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Mode Toggle */}
       <Card>
         <CardHeader>
