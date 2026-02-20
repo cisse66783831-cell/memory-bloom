@@ -12,7 +12,14 @@ interface ModelConfig {
   replicateId: string;
   modelId: string;
   systemPrompt: string | null;
-  useGateway?: boolean;
+}
+
+function isDeploymentModel(replicateId: string): boolean {
+  // 64-char hex = versioned model, not a deployment
+  if (/^[a-f0-9]{64}$/i.test(replicateId)) return false;
+  // owner/model paths without a version hash = deployment endpoint
+  if (replicateId.includes("/") && !replicateId.includes(":")) return true;
+  return false;
 }
 
 async function getModelConfig(supabase: any, modelId: string): Promise<ModelConfig | null> {
@@ -61,24 +68,22 @@ async function getModelForTrial(supabase: any, trialNumber: number): Promise<Mod
   } catch (err) {
     console.error("Error fetching model config:", err);
   }
-  // Fallback: nano-banana via gateway
-  return { replicateId: "google/nano-banana-pro", modelId: "nano-banana", systemPrompt: null, useGateway: true };
+  return { replicateId: "google/nano-banana-pro", modelId: "nano-banana", systemPrompt: null };
 }
 
-function isNanoBananaModel(modelId: string, replicateId: string): boolean {
-  return modelId === "nano-banana" || modelId === "nano-banana-pro" || replicateId.startsWith("google/");
-}
+function buildModelInput(modelId: string, replicateId: string, imageUrl: string, prompt: string, aspectRatio: string): Record<string, any> {
+  console.log(`Building input for modelId=${modelId}, replicateId=${replicateId}, prompt_length=${prompt.length}`);
 
-function isDeploymentModel(replicateId: string): boolean {
-  if (/^[a-f0-9]{64}$/i.test(replicateId)) return false;
-  if (replicateId.startsWith("anthropic/") || replicateId.startsWith("meta/")) return true;
-  if (replicateId.includes("/") && !replicateId.includes(":")) return true;
-  return false;
-}
+  // Nano Banana Pro — google/nano-banana-pro on Replicate
+  if (replicateId.startsWith("google/") || modelId === "nano-banana" || modelId === "nano-banana-pro") {
+    return {
+      prompt,
+      image_input: [imageUrl],
+    };
+  }
 
-function buildReplicateInput(modelId: string, imageUrl: string, aspectRatio: string): Record<string, any> {
   if (modelId === "flux-kontext") {
-    return { input_image: imageUrl, output_format: "png", safety_tolerance: 2 };
+    return { input_image: imageUrl, prompt, output_format: "png", safety_tolerance: 2 };
   }
   if (modelId === "flux-restore") {
     return { input_image: imageUrl, output_format: "png" };
@@ -92,77 +97,11 @@ function buildReplicateInput(modelId: string, imageUrl: string, aspectRatio: str
   if (modelId === "codeformer") {
     return { image: imageUrl, codeformer_fidelity: 0.7, upscale: 2 };
   }
-  return { image: imageUrl };
-}
-
-/**
- * Process image via Lovable AI Gateway (Gemini image editing)
- * Returns the restored image path in storage
- */
-async function processViaGateway(
-  supabase: any,
-  restorationId: string,
-  imageUrl: string,
-  prompt: string,
-  LOVABLE_API_KEY: string
-): Promise<string> {
-  console.log(`[Gateway] Calling Lovable AI with gemini-3-pro-image-preview`);
-  console.log(`[Gateway] Prompt (${prompt.length} chars): "${prompt.substring(0, 120)}..."`);
-
-  const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${LOVABLE_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "google/gemini-3-pro-image-preview",
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: prompt },
-            { type: "image_url", image_url: { url: imageUrl } },
-          ],
-        },
-      ],
-      modalities: ["image", "text"],
-    }),
-  });
-
-  if (!aiResponse.ok) {
-    const errText = await aiResponse.text();
-    if (aiResponse.status === 429) throw new Error("Rate limit atteint, réessayez dans quelques instants.");
-    if (aiResponse.status === 402) throw new Error("Crédit insuffisant sur le gateway IA.");
-    throw new Error(`Gateway error ${aiResponse.status}: ${errText}`);
+  if (modelId === "microsoft") {
+    return { image: imageUrl };
   }
 
-  const aiData = await aiResponse.json();
-  console.log(`[Gateway] Response received, parsing image...`);
-
-  const editedImageUrl: string | undefined = aiData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-  if (!editedImageUrl) {
-    console.error("[Gateway] Full response:", JSON.stringify(aiData).substring(0, 500));
-    throw new Error("Aucune image retournée par le gateway IA.");
-  }
-
-  // Decode base64 and upload to storage
-  const base64Data = editedImageUrl.replace(/^data:image\/\w+;base64,/, "");
-  const binaryStr = atob(base64Data);
-  const bytes = new Uint8Array(binaryStr.length);
-  for (let i = 0; i < binaryStr.length; i++) {
-    bytes[i] = binaryStr.charCodeAt(i);
-  }
-
-  const restoredPath = `restored/${restorationId}/restored.png`;
-  const { error: uploadError } = await supabase.storage
-    .from("photos")
-    .upload(restoredPath, bytes, { contentType: "image/png", upsert: true });
-
-  if (uploadError) throw new Error(`Storage upload error: ${uploadError.message}`);
-
-  console.log(`[Gateway] Image uploaded to: ${restoredPath}`);
-  return restoredPath;
+  return { image: imageUrl, prompt };
 }
 
 serve(async (req) => {
@@ -191,9 +130,10 @@ serve(async (req) => {
     }
 
     const REPLICATE_API_TOKEN = Deno.env.get("REPLICATE_API_TOKEN");
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+    if (!REPLICATE_API_TOKEN) throw new Error("REPLICATE_API_TOKEN is not configured");
 
     supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
@@ -203,10 +143,10 @@ serve(async (req) => {
       .update({ status: "processing", trial_number: trialNumber })
       .eq("id", restorationId);
 
-    // Get model config
+    // Get model
     const modelConfig = await getModelForTrial(supabase, trialNumber);
-    const useGateway = isNanoBananaModel(modelConfig.modelId, modelConfig.replicateId);
-    console.log(`Model: ${modelConfig.modelId} (${modelConfig.replicateId}) — gateway: ${useGateway}`);
+    const deployment = isDeploymentModel(modelConfig.replicateId);
+    console.log(`Using model: ${modelConfig.modelId} (${modelConfig.replicateId}) — deployment: ${deployment}`);
 
     await supabase
       .from("photo_restorations")
@@ -267,60 +207,11 @@ serve(async (req) => {
       ? " Also, colorize this photo naturally if it is black and white, using realistic and vivid colors appropriate to the era and subject."
       : "";
     const fullPrompt = (modelConfig.systemPrompt || DEFAULT_PROMPT) + colorizeAddition;
-    console.log(`Prompt (${fullPrompt.length} chars): "${fullPrompt.substring(0, 80)}..."`);
+    console.log(`Full prompt (${fullPrompt.length} chars): "${fullPrompt}"`);
 
-    // ============================================================
-    // ROUTE A: Lovable AI Gateway (Nano Banana / Gemini models)
-    // ============================================================
-    if (useGateway) {
-      if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
+    const modelInput = buildModelInput(modelConfig.modelId, modelConfig.replicateId, imageUrl, fullPrompt, aspectRatio);
 
-      const restoredPath = await processViaGateway(
-        supabase,
-        restorationId,
-        imageUrl,
-        fullPrompt,
-        LOVABLE_API_KEY
-      );
-
-      // Get the restoration to check if already paid
-      const { data: restoration } = await supabase
-        .from("photo_restorations")
-        .select("is_paid")
-        .eq("id", restorationId)
-        .single();
-
-      const finalStatus = restoration?.is_paid ? "completed" : "preview_ready";
-
-      await supabase
-        .from("photo_restorations")
-        .update({
-          status: finalStatus,
-          preview_image_path: restoredPath,
-          restored_image_path: finalStatus === "completed" ? restoredPath : null,
-        })
-        .eq("id", restorationId);
-
-      console.log(`[Gateway] Done — status: ${finalStatus}, path: ${restoredPath}`);
-
-      return new Response(
-        JSON.stringify({
-          success: true,
-          status: finalStatus,
-          modelUsed: modelConfig.modelId,
-          restoredPath,
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // ============================================================
-    // ROUTE B: Replicate (other models — flux, real-esrgan, etc.)
-    // ============================================================
-    if (!REPLICATE_API_TOKEN) throw new Error("REPLICATE_API_TOKEN is not configured");
-
-    const modelInput = buildReplicateInput(modelConfig.modelId, imageUrl, aspectRatio);
-    const deployment = isDeploymentModel(modelConfig.replicateId);
+    // Webhook URL for async completion
     const webhookUrl = `${SUPABASE_URL}/functions/v1/replicate-webhook`;
 
     let apiUrl: string;
@@ -328,10 +219,21 @@ serve(async (req) => {
 
     if (deployment) {
       apiUrl = `https://api.replicate.com/v1/models/${modelConfig.replicateId}/predictions`;
-      body = { input: modelInput, webhook: webhookUrl, webhook_events_filter: ["completed"] };
+      body = {
+        input: modelInput,
+        webhook: webhookUrl,
+        webhook_events_filter: ["completed"],
+      };
+      console.log(`DEPLOYMENT endpoint: ${apiUrl}`);
     } else {
       apiUrl = "https://api.replicate.com/v1/predictions";
-      body = { version: modelConfig.replicateId, input: modelInput, webhook: webhookUrl, webhook_events_filter: ["completed"] };
+      body = {
+        version: modelConfig.replicateId,
+        input: modelInput,
+        webhook: webhookUrl,
+        webhook_events_filter: ["completed"],
+      };
+      console.log(`VERSIONED endpoint: ${modelConfig.replicateId}`);
     }
 
     const createResponse = await fetch(apiUrl, {
@@ -349,7 +251,7 @@ serve(async (req) => {
     }
 
     const prediction = await createResponse.json();
-    console.log(`Replicate prediction created: ${prediction.id}`);
+    console.log(`Prediction created: ${prediction.id}, status: ${prediction.status}`);
 
     await supabase
       .from("photo_restorations")
