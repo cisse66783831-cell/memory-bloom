@@ -166,11 +166,8 @@ serve(async (req) => {
       );
     }
 
-    const REPLICATE_API_TOKEN = Deno.env.get("REPLICATE_API_TOKEN");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-
-    if (!REPLICATE_API_TOKEN) throw new Error("REPLICATE_API_TOKEN is not configured");
 
     supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
@@ -244,66 +241,194 @@ serve(async (req) => {
       ? " Also, colorize this photo naturally if it is black and white, using realistic and vivid colors appropriate to the era and subject."
       : "";
     const fullPrompt = (modelConfig.systemPrompt || DEFAULT_PROMPT) + colorizeAddition;
-    console.log(`Full prompt (${fullPrompt.length} chars): "${fullPrompt}"`);
+    console.log(`Full prompt (${fullPrompt.length} chars)`);
 
-    const modelInput = buildModelInput(modelConfig.modelId, modelConfig.replicateId, imageUrl, fullPrompt, aspectRatio);
+    // Determine AI provider
+    const { data: providerSetting } = await supabase
+      .from("app_settings")
+      .select("value")
+      .eq("key", "ai_provider")
+      .single();
+    const aiProvider = providerSetting?.value || "replicate";
+    console.log(`AI Provider: ${aiProvider}`);
 
-    // Webhook URL for async completion
-    const webhookUrl = `${SUPABASE_URL}/functions/v1/replicate-webhook`;
+    if (aiProvider === "orbit") {
+      // ===== ORBIT PROVIDER (OpenAI-compatible API with Gemini image models) =====
+      const ORBIT_BASE_URL = Deno.env.get("ORBIT_BASE_URL");
+      const ORBIT_AUTH_TOKEN = Deno.env.get("ORBIT_AUTH_TOKEN");
+      if (!ORBIT_BASE_URL || !ORBIT_AUTH_TOKEN) throw new Error("Orbit credentials not configured");
 
-    let apiUrl: string;
-    let body: any;
+      // Get orbit model from settings
+      const { data: orbitModelSetting } = await supabase
+        .from("app_settings")
+        .select("value")
+        .eq("key", "orbit_model")
+        .single();
+      const orbitModel = orbitModelSetting?.value || "gemini-3-pro-image-preview";
 
-    if (deployment) {
-      apiUrl = `https://api.replicate.com/v1/models/${modelConfig.replicateId}/predictions`;
-      body = {
-        input: modelInput,
-        webhook: webhookUrl,
-        webhook_events_filter: ["completed"],
-      };
-      console.log(`DEPLOYMENT endpoint: ${apiUrl}`);
+      console.log(`Orbit model: ${orbitModel}, URL: ${ORBIT_BASE_URL}`);
+
+      const orbitResponse = await fetch(`${ORBIT_BASE_URL}`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${ORBIT_AUTH_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: orbitModel,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: fullPrompt },
+                { type: "image_url", image_url: { url: imageUrl } },
+              ],
+            },
+          ],
+          max_tokens: 8192,
+        }),
+      });
+
+      if (!orbitResponse.ok) {
+        const errText = await orbitResponse.text();
+        throw new Error(`Orbit API error: ${orbitResponse.status} - ${errText}`);
+      }
+
+      const orbitResult = await orbitResponse.json();
+      console.log("Orbit response received, parsing result...");
+
+      // Extract image from response - Gemini image models return base64 in content
+      let restoredImageData: string | null = null;
+      const choices = orbitResult.choices || [];
+      for (const choice of choices) {
+        const content = choice.message?.content;
+        if (typeof content === "string") {
+          // Check if it's a base64 image or URL
+          if (content.startsWith("data:image")) {
+            restoredImageData = content;
+          } else if (content.startsWith("http")) {
+            restoredImageData = content;
+          }
+        } else if (Array.isArray(content)) {
+          for (const part of content) {
+            if (part.type === "image_url" && part.image_url?.url) {
+              restoredImageData = part.image_url.url;
+            } else if (part.type === "image" && part.source?.data) {
+              restoredImageData = `data:image/${part.source.media_type || "png"};base64,${part.source.data}`;
+            }
+          }
+        }
+      }
+
+      if (!restoredImageData) {
+        console.error("Orbit response structure:", JSON.stringify(orbitResult).slice(0, 500));
+        throw new Error("No image found in Orbit response");
+      }
+
+      // Upload restored image to storage
+      const restoredPath = `restored/${restorationId}.png`;
+      let uploadData: Uint8Array;
+
+      if (restoredImageData.startsWith("data:")) {
+        const b64 = restoredImageData.split(",")[1];
+        const binaryStr = atob(b64);
+        uploadData = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++) uploadData[i] = binaryStr.charCodeAt(i);
+      } else {
+        // It's a URL, download it
+        const imgResp = await fetch(restoredImageData);
+        const imgBuf = await imgResp.arrayBuffer();
+        uploadData = new Uint8Array(imgBuf);
+      }
+
+      const { error: uploadError } = await supabase.storage
+        .from("photos")
+        .upload(restoredPath, uploadData, { contentType: "image/png", upsert: true });
+
+      if (uploadError) throw new Error(`Upload error: ${uploadError.message}`);
+
+      // Update restoration record
+      await supabase
+        .from("photo_restorations")
+        .update({
+          restored_image_path: restoredPath,
+          preview_image_path: restoredPath,
+          status: "completed",
+        })
+        .eq("id", restorationId);
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          status: "completed",
+          modelUsed: modelConfig.modelId,
+          provider: "orbit",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+
     } else {
-      apiUrl = "https://api.replicate.com/v1/predictions";
-      body = {
-        version: modelConfig.replicateId,
-        input: modelInput,
-        webhook: webhookUrl,
-        webhook_events_filter: ["completed"],
-      };
-      console.log(`VERSIONED endpoint: ${modelConfig.replicateId}`);
+      // ===== REPLICATE PROVIDER =====
+      const REPLICATE_API_TOKEN = Deno.env.get("REPLICATE_API_TOKEN");
+      if (!REPLICATE_API_TOKEN) throw new Error("REPLICATE_API_TOKEN is not configured");
+
+      const modelInput = buildModelInput(modelConfig.modelId, modelConfig.replicateId, imageUrl, fullPrompt, aspectRatio);
+
+      const webhookUrl = `${SUPABASE_URL}/functions/v1/replicate-webhook`;
+
+      let apiUrl: string;
+      let body: any;
+
+      if (deployment) {
+        apiUrl = `https://api.replicate.com/v1/models/${modelConfig.replicateId}/predictions`;
+        body = {
+          input: modelInput,
+          webhook: webhookUrl,
+          webhook_events_filter: ["completed"],
+        };
+      } else {
+        apiUrl = "https://api.replicate.com/v1/predictions";
+        body = {
+          version: modelConfig.replicateId,
+          input: modelInput,
+          webhook: webhookUrl,
+          webhook_events_filter: ["completed"],
+        };
+      }
+
+      const createResponse = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${REPLICATE_API_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!createResponse.ok) {
+        const errorText = await createResponse.text();
+        throw new Error(`Replicate API error: ${createResponse.status} - ${errorText}`);
+      }
+
+      const prediction = await createResponse.json();
+      console.log(`Prediction created: ${prediction.id}, status: ${prediction.status}`);
+
+      await supabase
+        .from("photo_restorations")
+        .update({ replicate_prediction_id: prediction.id })
+        .eq("id", restorationId);
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          predictionId: prediction.id,
+          status: "processing",
+          modelUsed: modelConfig.modelId,
+          provider: "replicate",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
-
-    const createResponse = await fetch(apiUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${REPLICATE_API_TOKEN}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
-
-    if (!createResponse.ok) {
-      const errorText = await createResponse.text();
-      throw new Error(`Replicate API error: ${createResponse.status} - ${errorText}`);
-    }
-
-    const prediction = await createResponse.json();
-    console.log(`Prediction created: ${prediction.id}, status: ${prediction.status}`);
-
-    await supabase
-      .from("photo_restorations")
-      .update({ replicate_prediction_id: prediction.id })
-      .eq("id", restorationId);
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        predictionId: prediction.id,
-        status: "processing",
-        modelUsed: modelConfig.modelId,
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
 
   } catch (error) {
     console.error("Restore photo error:", error);
