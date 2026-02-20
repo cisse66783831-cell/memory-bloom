@@ -13,9 +13,13 @@ interface ModelConfig {
 }
 
 function isDeploymentModel(replicateId: string): boolean {
-  if (!replicateId.includes("/")) return false;
+  // A versioned model hash is 64 hex chars — not a deployment
   if (/^[a-f0-9]{64}$/i.test(replicateId)) return false;
-  return true;
+  // google/nano-banana-pro and similar owner/model paths are deployments
+  if (replicateId.startsWith("google/") || replicateId.startsWith("anthropic/") || replicateId.startsWith("meta/")) return true;
+  // owner/model path without a version hash = deployment
+  if (replicateId.includes("/") && !replicateId.includes(":")) return true;
+  return false;
 }
 
 async function getModelConfig(supabase: any, modelId: string): Promise<ModelConfig | null> {
