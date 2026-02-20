@@ -87,15 +87,22 @@ serve(async (req) => {
       }
 
       // === UNLOCK IMAGE: no new AI generation — just copy preview path to restored path ===
-      if (restoration && restoration.status !== "completed" && restoration.preview_image_path) {
-        console.log("Unlocking existing generated image for:", payment.restoration_id);
-        await supabase
-          .from("photo_restorations")
-          .update({
-            status: "completed",
-            restored_image_path: restoration.preview_image_path,
-          })
-          .eq("id", payment.restoration_id);
+      if (restoration && restoration.status !== "completed") {
+        if (restoration.preview_image_path) {
+          // Normal case: image is ready → unlock immediately
+          console.log("Unlocking existing generated image for:", payment.restoration_id);
+          await supabase
+            .from("photo_restorations")
+            .update({
+              status: "completed",
+              restored_image_path: restoration.preview_image_path,
+            })
+            .eq("id", payment.restoration_id);
+        } else {
+          // Image not yet generated (e.g. webhook still in progress)
+          // is_paid is already set to true above — the webhook will finalize when it arrives
+          console.log("Image not yet ready for:", payment.restoration_id, "— webhook will complete it");
+        }
       }
 
       // Handle referral/partner rewards
