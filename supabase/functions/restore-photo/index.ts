@@ -72,29 +72,44 @@ async function getModelForTrial(supabase: any, trialNumber: number): Promise<Mod
   return { replicateId: "google/nano-banana-pro", modelId: "nano-banana", systemPrompt: null };
 }
 
-function buildModelInput(modelId: string, imageUrl: string, prompt: string, aspectRatio: string): Record<string, any> {
-  if (modelId === "flux-kontext") {
-    return { input_image: imageUrl, output_format: "png", safety_tolerance: 2 };
-  } else if (modelId === "nano-banana" || modelId === "nano-banana-pro" || modelId === "gemini-flash") {
-    return {
+function buildModelInput(modelId: string, replicateId: string, imageUrl: string, prompt: string, aspectRatio: string): Record<string, any> {
+  console.log(`Building input for modelId=${modelId}, replicateId=${replicateId}`);
+
+  // Nano Banana Pro (google/nano-banana-pro) — deployment model via Lovable gateway
+  if (replicateId.startsWith("google/") || modelId === "nano-banana" || modelId === "nano-banana-pro") {
+    const input = {
       prompt,
       image_input: [imageUrl],
-      aspect_ratio: aspectRatio,
+      aspect_ratio: aspectRatio || "match_input_image",
       resolution: "2K",
       output_format: "png",
       safety_filter_level: "block_only_high",
     };
-  } else if (modelId === "flux-restore") {
+    console.log(`Nano Banana input (prompt length: ${prompt.length}): aspect_ratio=${aspectRatio}`);
+    return input;
+  }
+
+  if (modelId === "flux-kontext") {
+    return { input_image: imageUrl, prompt, output_format: "png", safety_tolerance: 2 };
+  }
+  if (modelId === "flux-restore") {
     return { input_image: imageUrl, output_format: "png" };
-  } else if (modelId === "real-esrgan") {
+  }
+  if (modelId === "real-esrgan") {
     return { image: imageUrl, scale: 4 };
-  } else if (modelId === "gfpgan") {
+  }
+  if (modelId === "gfpgan") {
     return { img: imageUrl, version: "v1.4", scale: 4 };
-  } else if (modelId === "codeformer") {
+  }
+  if (modelId === "codeformer") {
     return { image: imageUrl, codeformer_fidelity: 0.7, upscale: 2 };
-  } else {
+  }
+  if (modelId === "microsoft") {
     return { image: imageUrl };
   }
+
+  // Generic fallback for unknown models — try prompt + image
+  return { image: imageUrl, prompt };
 }
 
 serve(async (req) => {
@@ -202,7 +217,8 @@ serve(async (req) => {
       : "";
     const fullPrompt = (modelConfig.systemPrompt || defaultPrompt) + colorizeAddition;
 
-    const modelInput = buildModelInput(modelConfig.modelId, imageUrl, fullPrompt, aspectRatio);
+    const modelInput = buildModelInput(modelConfig.modelId, modelConfig.replicateId, imageUrl, fullPrompt, aspectRatio);
+    console.log(`Final prompt (${fullPrompt.length} chars): "${fullPrompt.substring(0, 100)}..."`);
 
     // Webhook URL for async completion
     const webhookUrl = `${SUPABASE_URL}/functions/v1/replicate-webhook`;
