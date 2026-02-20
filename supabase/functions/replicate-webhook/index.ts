@@ -94,13 +94,22 @@ serve(async (req) => {
       throw new Error("Failed to upload restored image");
     }
 
-    // Mark as preview_ready with the stored path
+    // Determine final status based on payment state
+    // If already paid (admin validated before AI finished), unlock directly
+    const updateData: Record<string, string> = {
+      preview_image_path: storagePath,
+      status: "preview_ready",
+    };
+
+    if (restoration.is_paid) {
+      console.log(`Restoration ${restoration.id} is already paid — marking as completed directly`);
+      updateData.status = "completed";
+      updateData.restored_image_path = storagePath;
+    }
+
     await supabase
       .from("photo_restorations")
-      .update({
-        status: "preview_ready",
-        preview_image_path: storagePath,
-      })
+      .update(updateData)
       .eq("id", restoration.id);
 
     console.log(`Restoration ${restoration.id} preview ready at ${storagePath}`);

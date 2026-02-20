@@ -366,10 +366,10 @@ export const PhotosSection = forwardRef<HTMLDivElement>(function PhotosSection(_
               <p className="text-muted-foreground">Impossible de charger l'aperçu</p>
             )}
           </div>
-          {selectedPhoto && !selectedPhoto.is_paid && (
+          {selectedPhoto && !selectedPhoto.is_paid && selectedPhoto.preview_image_path && (
             <div className="flex gap-2 pt-2">
               <Button className="flex-1" asChild>
-                <a href={`/?photo=${selectedPhoto.id}`}>
+                <a href={`/?restore=1&unlock=${selectedPhoto.id}`}>
                   <CreditCard className="h-4 w-4 mr-1.5" />
                   Débloquer le HD
                 </a>

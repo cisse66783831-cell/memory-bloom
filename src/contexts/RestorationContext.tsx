@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode, useCallback } from "react";
+import { createContext, useContext, useState, ReactNode, useCallback, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
 type RestorationStep = "upload" | "processing" | "comparison" | "success" | "upsell";
@@ -71,6 +71,88 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
     modelUsed: null,
   });
 
+  // Refs to track polling state without re-renders
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollStartRef = useRef<number>(0);
+  const POLL_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+
+  // ============================================================
+  // Non-blocking polling via useEffect — survives re-renders
+  // ============================================================
+  useEffect(() => {
+    if (state.step !== "processing" || !state.restorationId) return;
+
+    pollStartRef.current = Date.now();
+
+    pollIntervalRef.current = setInterval(async () => {
+      // Timeout check
+      if (Date.now() - pollStartRef.current > POLL_TIMEOUT) {
+        clearInterval(pollIntervalRef.current!);
+        setState((prev) => ({
+          ...prev,
+          step: "upload",
+          error: "La génération a pris trop de temps. Veuillez réessayer.",
+        }));
+        return;
+      }
+
+      try {
+        const { data: dbRestoration } = await supabase
+          .from("photo_restorations")
+          .select("status, preview_image_path, used_model_id")
+          .eq("id", state.restorationId!)
+          .single();
+
+        if (dbRestoration?.status === "failed") {
+          clearInterval(pollIntervalRef.current!);
+          setState((prev) => ({
+            ...prev,
+            step: "upload",
+            error: "La restauration a échoué. Veuillez réessayer.",
+          }));
+          return;
+        }
+
+        if (dbRestoration?.status === "preview_ready" && dbRestoration.preview_image_path) {
+          clearInterval(pollIntervalRef.current!);
+          // Stop progress animation
+          if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+
+          const { data: signed } = await supabase.storage
+            .from("photos")
+            .createSignedUrl(dbRestoration.preview_image_path, 3600);
+
+          const previewUrl = signed?.signedUrl || null;
+
+          if (!previewUrl) {
+            setState((prev) => ({
+              ...prev,
+              step: "upload",
+              error: "Impossible de charger l'aperçu. Veuillez réessayer.",
+            }));
+            return;
+          }
+
+          setState((prev) => ({
+            ...prev,
+            step: "comparison",
+            progress: 100,
+            previewImageUrl: previewUrl,
+            restoredImageUrl: previewUrl,
+            modelUsed: dbRestoration.used_model_id || prev.modelUsed,
+          }));
+        }
+      } catch (err) {
+        console.error("Poll error:", err);
+      }
+    }, 3000);
+
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
+  }, [state.step, state.restorationId]);
+
   const setStep = useCallback((step: RestorationStep) => {
     setState((prev) => ({ ...prev, step }));
   }, []);
@@ -86,9 +168,14 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
   const uploadPhoto = useCallback(async (file: File, colorize: boolean = false, outputFormat?: OutputFormat) => {
     try {
       const currentFormat = outputFormat ?? state.outputFormat;
-      setState((prev) => ({ 
-        ...prev, 
-        step: "processing", 
+
+      // Clear any previous polling
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+
+      setState((prev) => ({
+        ...prev,
+        step: "processing",
         progress: 0,
         error: null,
         originalImageUrl: URL.createObjectURL(file),
@@ -96,6 +183,9 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
         trialCount: 1,
         userRating: null,
         modelUsed: null,
+        restorationId: null,
+        previewImageUrl: null,
+        restoredImageUrl: null,
       }));
 
       const base64 = await new Promise<string>((resolve, reject) => {
@@ -125,15 +215,21 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
 
       if (insertError || !restoration) throw new Error("Failed to create restoration");
 
+      // Save restorationId — this triggers the useEffect poll
       setState((prev) => ({ ...prev, restorationId: restoration.id, progress: 10 }));
 
-      const progressInterval = setInterval(() => {
+      // Start fake progress animation
+      progressIntervalRef.current = setInterval(() => {
         setState((prev) => {
-          if (prev.progress >= 80) { clearInterval(progressInterval); return prev; }
-          return { ...prev, progress: prev.progress + Math.random() * 15 };
+          if (prev.progress >= 85) {
+            clearInterval(progressIntervalRef.current!);
+            return prev;
+          }
+          return { ...prev, progress: prev.progress + Math.random() * 8 };
         });
-      }, 800);
+      }, 1500);
 
+      // Call restore-photo — returns immediately with predictionId
       const { data: result, error: restoreError } = await supabase.functions.invoke(
         "restore-photo",
         {
@@ -147,67 +243,17 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
         }
       );
 
-      clearInterval(progressInterval);
-
       if (restoreError || !result?.success) {
+        if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
         throw new Error(result?.error || "Restoration failed");
       }
 
-      // restore-photo is now async (webhook-based) — poll until preview_ready
-      // Progress continues while we wait
-      const pollInterval = setInterval(() => {
-        setState((prev) => {
-          if (prev.progress >= 95) return prev;
-          return { ...prev, progress: Math.min(prev.progress + 3, 95) };
-        });
-      }, 2000);
-
-      let previewUrl: string | null = null;
-      let modelUsed: string | null = result.modelUsed || null;
-      const maxWait = 180_000; // 3 minutes
-      const pollStart = Date.now();
-
-      while (!previewUrl && Date.now() - pollStart < maxWait) {
-        await new Promise((r) => setTimeout(r, 3000));
-
-        const { data: dbRestoration } = await supabase
-          .from("photo_restorations")
-          .select("status, preview_image_path, used_model_id")
-          .eq("id", restoration.id)
-          .single();
-
-        if (dbRestoration?.status === "failed") {
-          clearInterval(pollInterval);
-          throw new Error("La restauration a échoué. Veuillez réessayer.");
-        }
-
-        if (dbRestoration?.status === "preview_ready" && dbRestoration.preview_image_path) {
-          // Generate signed URL
-          const { data: signed } = await supabase.storage
-            .from("photos")
-            .createSignedUrl(dbRestoration.preview_image_path, 3600);
-          previewUrl = signed?.signedUrl || null;
-          modelUsed = dbRestoration.used_model_id || modelUsed;
-        }
-      }
-
-      clearInterval(pollInterval);
-
-      if (!previewUrl) {
-        throw new Error("La génération a pris trop de temps. Veuillez réessayer.");
-      }
-
-      setState((prev) => ({
-        ...prev,
-        step: "comparison",
-        progress: 100,
-        previewImageUrl: previewUrl,
-        restoredImageUrl: previewUrl,
-        modelUsed,
-      }));
+      // useEffect poll takes over from here — no blocking while loop
 
     } catch (error) {
       console.error("Upload error:", error);
+      if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
       setState((prev) => ({
         ...prev,
         step: "upload",
@@ -219,7 +265,7 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
   const submitRating = useCallback(async (rating: number) => {
     if (!state.restorationId) return;
     setState((prev) => ({ ...prev, userRating: rating }));
-    
+
     await supabase
       .from("photo_restorations")
       .update({ user_rating: rating })
@@ -232,9 +278,9 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
     const newTrial = state.trialCount + 1;
     setState((prev) => ({ ...prev, step: "processing", progress: 0, trialCount: newTrial, userRating: null }));
 
-    const progressInterval = setInterval(() => {
+    progressIntervalRef.current = setInterval(() => {
       setState((prev) => {
-        if (prev.progress >= 80) { clearInterval(progressInterval); return prev; }
+        if (prev.progress >= 80) { clearInterval(progressIntervalRef.current!); return prev; }
         return { ...prev, progress: prev.progress + Math.random() * 15 };
       });
     }, 800);
@@ -249,20 +295,24 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
         },
       });
 
-      clearInterval(progressInterval);
+      if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
 
       if (error || !result?.success) throw new Error(result?.error || "Retry failed");
 
-      setState((prev) => ({
-        ...prev,
-        step: "comparison",
-        progress: 100,
-        previewImageUrl: result.previewUrl,
-        restoredImageUrl: result.previewUrl,
-        modelUsed: result.modelUsed || null,
-      }));
+      // The useEffect poll will detect preview_ready and transition to comparison
+      // If result already contains previewUrl (sync mode), use it directly
+      if (result.previewUrl) {
+        setState((prev) => ({
+          ...prev,
+          step: "comparison",
+          progress: 100,
+          previewImageUrl: result.previewUrl,
+          restoredImageUrl: result.previewUrl,
+          modelUsed: result.modelUsed || null,
+        }));
+      }
     } catch (error) {
-      clearInterval(progressInterval);
+      if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
       console.error("Retry error:", error);
       setState((prev) => ({
         ...prev,
@@ -379,6 +429,8 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
   }, [state.downloadUrls]);
 
   const reset = useCallback(() => {
+    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
     setState({
       step: "upload",
       restorationId: null,
