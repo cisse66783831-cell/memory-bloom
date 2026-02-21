@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { motion } from "framer-motion";
 import { useNavigate, Link } from "react-router-dom";
-import { Camera, AlertCircle, Loader2, Mail } from "lucide-react";
+import { Camera, AlertCircle, Loader2, Mail, MessageCircle } from "lucide-react";
 import { Header } from "@/components/Header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -152,6 +152,20 @@ export default function Dashboard() {
               </Button>
             </CardContent>
           </Card>
+
+          {/* WhatsApp Community */}
+          <div className="flex justify-center">
+            <Button asChild variant="outline" size="sm" className="rounded-full">
+              <a
+                href="https://chat.whatsapp.com/CUK9SFfWaDU6MEsbzjbNCg?mode=gi_t"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <MessageCircle className="w-4 h-4 mr-2" />
+                Rejoindre la communauté WhatsApp
+              </a>
+            </Button>
+          </div>
 
           {/* Active Subscription */}
           <ActiveSubscription />
