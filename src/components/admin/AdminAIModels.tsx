@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,9 +8,10 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Zap, Star, RefreshCw, Settings, BarChart3, ScrollText, Rocket, Globe } from "lucide-react";
+import { Loader2, Zap, Star, RefreshCw, Settings, BarChart3, ScrollText, Rocket, Globe, FileText, Upload, Eye } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 
@@ -27,6 +28,7 @@ interface AIModel {
   conversion_rate: number;
   total_runs: number;
   updated_at: string;
+  system_prompt: string | null;
 }
 
 interface OptLog {
@@ -51,6 +53,19 @@ export const AdminAIModels = () => {
     final_hd_model_id: "",
   });
 
+  // Prompt editor state
+  const [selectedPromptModelId, setSelectedPromptModelId] = useState<string>("");
+  const [promptText, setPromptText] = useState<string>("");
+  const [promptSaving, setPromptSaving] = useState(false);
+  const [promptDirty, setPromptDirty] = useState(false);
+
+  // Test state
+  const [testFile, setTestFile] = useState<File | null>(null);
+  const [testPreview, setTestPreview] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<string | null>(null);
+  const [testLoading, setTestLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     const [settingsRes, modelsRes, logsRes] = await Promise.all([
@@ -72,12 +87,29 @@ export const AdminAIModels = () => {
         final_hd_model_id: map["final_hd_model_id"] || "",
       });
     }
-    if (modelsRes.data) setModels(modelsRes.data as unknown as AIModel[]);
+    if (modelsRes.data) {
+      const modelsData = modelsRes.data as unknown as AIModel[];
+      setModels(modelsData);
+      // Auto-select first model for prompt editor if none selected
+      if (!selectedPromptModelId && modelsData.length > 0) {
+        setSelectedPromptModelId(modelsData[0].id);
+        setPromptText(modelsData[0].system_prompt || "");
+      }
+    }
     if (logsRes.data) setLogs(logsRes.data as OptLog[]);
     setLoading(false);
-  }, []);
+  }, [selectedPromptModelId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Update prompt text when model selection changes
+  useEffect(() => {
+    if (selectedPromptModelId) {
+      const model = models.find(m => m.id === selectedPromptModelId);
+      setPromptText(model?.system_prompt || "");
+      setPromptDirty(false);
+    }
+  }, [selectedPromptModelId, models]);
 
   const toggleMode = async () => {
     const newMode = mode === "manual" ? "auto" : "manual";
@@ -140,6 +172,123 @@ export const AdminAIModels = () => {
       toast({ title: "Erreur", description: err.message, variant: "destructive" });
     }
     setToggling(null);
+  };
+
+  // Prompt functions
+  const handleSavePrompt = async () => {
+    if (!selectedPromptModelId) return;
+    setPromptSaving(true);
+    const { error } = await supabase
+      .from("ai_models_config")
+      .update({ system_prompt: promptText || null })
+      .eq("id", selectedPromptModelId);
+    if (error) {
+      toast({ title: "Erreur", description: error.message, variant: "destructive" });
+    } else {
+      setModels(prev => prev.map(m => m.id === selectedPromptModelId ? { ...m, system_prompt: promptText || null } : m));
+      setPromptDirty(false);
+      toast({ title: "Prompt sauvegardé ✓" });
+    }
+    setPromptSaving(false);
+  };
+
+  const handleTestFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setTestFile(file);
+    setTestResult(null);
+    const reader = new FileReader();
+    reader.onload = () => setTestPreview(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handleTestPrompt = async () => {
+    if (!testFile || !selectedPromptModelId) return;
+    setTestLoading(true);
+    setTestResult(null);
+
+    try {
+      // Convert file to base64
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(testFile);
+      });
+
+      // Upload to storage
+      const testPath = `test/admin-test-${Date.now()}.jpg`;
+      await supabase.storage.from("photos").upload(testPath, testFile, { upsert: true });
+
+      // Create a test restoration record
+      const { data: restoration, error: insertError } = await supabase
+        .from("photo_restorations")
+        .insert({
+          session_id: `admin-test-${Date.now()}`,
+          original_image_path: testPath,
+          status: "pending",
+          user_id: (await supabase.auth.getUser()).data.user?.id || null,
+          used_model_id: selectedPromptModelId,
+        })
+        .select()
+        .single();
+
+      if (insertError || !restoration) throw new Error("Impossible de créer la restauration test");
+
+      // Save the prompt first to ensure the model uses the latest
+      if (promptDirty) {
+        await supabase
+          .from("ai_models_config")
+          .update({ system_prompt: promptText || null })
+          .eq("id", selectedPromptModelId);
+        setModels(prev => prev.map(m => m.id === selectedPromptModelId ? { ...m, system_prompt: promptText || null } : m));
+        setPromptDirty(false);
+      }
+
+      // Call restore-photo
+      const { data: result, error: restoreError } = await supabase.functions.invoke("restore-photo", {
+        body: {
+          restorationId: restoration.id,
+          imageBase64: base64,
+          trialNumber: 1,
+        },
+      });
+
+      if (restoreError || !result?.success) {
+        throw new Error(result?.error || "Échec de la restauration test");
+      }
+
+      // Poll for result (max 3 min)
+      const maxWait = 180_000;
+      const start = Date.now();
+      while (Date.now() - start < maxWait) {
+        await new Promise(r => setTimeout(r, 3000));
+        const { data: dbRes } = await supabase
+          .from("photo_restorations")
+          .select("status, preview_image_path, restored_image_path")
+          .eq("id", restoration.id)
+          .single();
+
+        if (dbRes?.status === "failed") throw new Error("La restauration test a échoué");
+
+        const imagePath = dbRes?.restored_image_path || dbRes?.preview_image_path;
+        if ((dbRes?.status === "completed" || dbRes?.status === "preview_ready") && imagePath) {
+          const { data: signed } = await supabase.storage.from("photos").createSignedUrl(imagePath, 3600);
+          if (signed?.signedUrl) {
+            setTestResult(signed.signedUrl);
+            toast({ title: "Test terminé ✓", description: "Le résultat est affiché ci-dessous." });
+          }
+          break;
+        }
+      }
+
+      if (!testResult && Date.now() - start >= maxWait) {
+        toast({ title: "Timeout", description: "Le test a pris trop de temps.", variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Erreur de test", description: err.message, variant: "destructive" });
+    }
+    setTestLoading(false);
   };
 
   if (loading) {
@@ -256,6 +405,9 @@ export const AdminAIModels = () => {
           <TabsTrigger value="auto" className="flex items-center gap-1.5">
             <BarChart3 className="h-4 w-4" /> Vue Auto
           </TabsTrigger>
+          <TabsTrigger value="prompt" className="flex items-center gap-1.5">
+            <FileText className="h-4 w-4" /> Prompt
+          </TabsTrigger>
           <TabsTrigger value="logs" className="flex items-center gap-1.5">
             <ScrollText className="h-4 w-4" /> Logs
           </TabsTrigger>
@@ -368,6 +520,130 @@ export const AdminAIModels = () => {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* PROMPT EDITOR */}
+        <TabsContent value="prompt">
+          <div className="grid gap-6 lg:grid-cols-2">
+            {/* Left: Editor */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Éditeur de prompt
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label className="text-sm font-medium mb-2 block">Modèle</Label>
+                  <Select value={selectedPromptModelId} onValueChange={setSelectedPromptModelId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sélectionner un modèle" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {models.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>
+                          {m.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium mb-2 block">
+                    Prompt système
+                    {promptDirty && <Badge variant="secondary" className="ml-2 text-xs">Non sauvegardé</Badge>}
+                  </Label>
+                  <Textarea
+                    value={promptText}
+                    onChange={(e) => { setPromptText(e.target.value); setPromptDirty(true); }}
+                    placeholder="Entrez le prompt de restauration..."
+                    className="min-h-[300px] font-mono text-xs leading-relaxed"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {promptText.length} caractères • Laissez vide pour utiliser le prompt par défaut
+                  </p>
+                </div>
+                <Button onClick={handleSavePrompt} disabled={promptSaving || !promptDirty} className="w-full">
+                  {promptSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Sauvegarder le prompt
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Right: Test */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Eye className="h-5 w-5" />
+                  Tester le prompt
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label className="text-sm font-medium mb-2 block">Image de test</Label>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleTestFile}
+                    className="hidden"
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full"
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    {testFile ? testFile.name : "Choisir une image"}
+                  </Button>
+                </div>
+
+                {testPreview && (
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Original</Label>
+                    <img src={testPreview} alt="Test original" className="w-full rounded-lg border border-border/50 max-h-48 object-contain bg-secondary/30" />
+                  </div>
+                )}
+
+                <Button
+                  onClick={handleTestPrompt}
+                  disabled={testLoading || !testFile || !selectedPromptModelId}
+                  className="w-full"
+                >
+                  {testLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      Génération en cours...
+                    </>
+                  ) : (
+                    <>
+                      <Rocket className="h-4 w-4 mr-2" />
+                      Lancer le test
+                    </>
+                  )}
+                </Button>
+
+                {testLoading && (
+                  <p className="text-xs text-muted-foreground text-center animate-pulse">
+                    Le test peut prendre 30s à 2min selon le provider...
+                  </p>
+                )}
+
+                {testResult && (
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Résultat</Label>
+                    <img src={testResult} alt="Test result" className="w-full rounded-lg border-2 border-primary/30 max-h-64 object-contain bg-secondary/30" />
+                    <Button variant="outline" size="sm" asChild className="w-full">
+                      <a href={testResult} target="_blank" rel="noopener noreferrer">
+                        Voir en plein écran
+                      </a>
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* LOGS */}
