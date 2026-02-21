@@ -239,12 +239,26 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
             colorize,
             aspectRatio: currentFormat,
             trialNumber: 1,
+            sessionId: state.sessionId,
           },
         }
       );
 
-      if (restoreError || !result?.success) {
+      if (restoreError) {
         if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+        // Check for limit reached (403)
+        const errorBody = restoreError?.message || "";
+        if (errorBody.includes("LIMIT_REACHED") || errorBody.includes("limite")) {
+          throw new Error("Vous avez atteint la limite de 2 restaurations gratuites. Veuillez payer une restauration existante.");
+        }
+        throw new Error("Restoration failed");
+      }
+
+      if (!result?.success) {
+        if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+        if (result?.error === "LIMIT_REACHED") {
+          throw new Error(result?.message || "Limite de 2 restaurations gratuites atteinte.");
+        }
         throw new Error(result?.error || "Restoration failed");
       }
 

@@ -207,36 +207,21 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle", r
             <span>Vous serez notifié dès la validation</span>
           </div>
 
-          {/* WhatsApp buttons in pending state too */}
-          <div className="flex flex-col gap-3">
-            <Button
-              asChild
-              className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold rounded-full"
+          {/* WhatsApp proof button - small */}
+          <Button
+            asChild
+            size="sm"
+            className="bg-green-600 hover:bg-green-700 text-white rounded-full"
+          >
+            <a
+              href={`https://wa.me/22666783831?text=${encodeURIComponent(`Bonjour, j'ai effectué un dépôt pour ma restauration photo. ID: ${restorationId || "N/A"}. Voici ma preuve de paiement :`)}`}
+              target="_blank"
+              rel="noopener noreferrer"
             >
-              <a
-                href={`https://wa.me/22666783831?text=${encodeURIComponent(`Bonjour, j'ai effectué un dépôt pour ma restauration photo. ID: ${restorationId || "N/A"}. Voici ma preuve de paiement :`)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <MessageCircle className="w-5 h-5 mr-2" />
-                Envoyer la preuve (Validation rapide)
-              </a>
-            </Button>
-            <Button
-              asChild
-              variant="outline"
-              className="w-full rounded-full"
-            >
-              <a
-                href="https://chat.whatsapp.com/CUK9SFfWaDU6MEsbzjbNCg?mode=gi_t"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <Users className="w-5 h-5 mr-2" />
-                Rejoindre la communauté
-              </a>
-            </Button>
-          </div>
+              <MessageCircle className="w-4 h-4 mr-1" />
+              Envoyer la preuve
+            </a>
+          </Button>
         </div>
       </motion.div>
     );
@@ -556,33 +541,21 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle", r
           )}
         </Button>
 
-        {/* WhatsApp buttons */}
-        <div className="flex flex-col gap-3 mt-4">
+        {/* WhatsApp proof button - small */}
+        <div className="mt-4 text-center">
           <Button
             asChild
-            className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold rounded-full"
+            size="sm"
+            variant="outline"
+            className="rounded-full border-green-600/30 text-green-600 hover:bg-green-600/10"
           >
             <a
               href={`https://wa.me/22666783831?text=${encodeURIComponent(`Bonjour, j'ai effectué un dépôt pour ma restauration photo. ID: ${restorationId || "N/A"}. Voici ma preuve de paiement :`)}`}
               target="_blank"
               rel="noopener noreferrer"
             >
-              <MessageCircle className="w-5 h-5 mr-2" />
-              Envoyer la preuve (Validation rapide)
-            </a>
-          </Button>
-          <Button
-            asChild
-            variant="outline"
-            className="w-full rounded-full"
-          >
-            <a
-              href="https://chat.whatsapp.com/CUK9SFfWaDU6MEsbzjbNCg?mode=gi_t"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <Users className="w-5 h-5 mr-2" />
-              Rejoindre la communauté
+              <MessageCircle className="w-4 h-4 mr-1" />
+              Envoyer la preuve par WhatsApp
             </a>
           </Button>
         </div>

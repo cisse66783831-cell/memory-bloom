@@ -11,9 +11,9 @@ import before3 from "@/assets/examples/before-3.jpg";
 import after3 from "@/assets/examples/after-3.jpg";
 
 const examples = [
-  { id: 1, before: before1, after: after1, title: "Portrait de famille", description: "Photo des années 1940 restaurée" },
-  { id: 2, before: before2, after: after2, title: "Photo de mariage", description: "Souvenir de 1960 sublimé" },
-  { id: 3, before: before3, after: after3, title: "Portrait d'enfant", description: "Mémoire des années 1950" },
+  { id: 1, before: before1, after: after1, title: "Portrait de grand-mère", description: "Photo de famille africaine restaurée" },
+  { id: 2, before: before2, after: after2, title: "Mariage traditionnel", description: "Cérémonie des années 70 sublimée" },
+  { id: 3, before: before3, after: after3, title: "Photo de famille", description: "Souvenir précieux restauré avec soin" },
 ];
 
 export const ExamplesGallery = forwardRef<HTMLElement, object>((_, ref) => {
