@@ -17,6 +17,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Upload, Sparkles, Download, Star, ChevronDown, Shield, Zap, Clock } from "lucide-react";
+import logoRevivo from "@/assets/logo-revivo.svg";
 import {
   Accordion,
   AccordionContent,
@@ -388,10 +389,7 @@ function IndexContent() {
       <footer className="border-t border-border/30 mt-auto">
         <div className="container py-10">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-primary" />
-              <span className="font-heading text-sm font-semibold text-foreground">REVIVO</span>
-            </div>
+            <img src={logoRevivo} alt="REVIVO" className="h-8 w-auto" />
             <p className="text-sm text-muted-foreground">© 2026 REVIVO. Vos souvenirs, ravivés.</p>
           </div>
         </div>

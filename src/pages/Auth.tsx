@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Mail, Lock, ArrowLeft, Leaf } from "lucide-react";
+import { Mail, Lock, ArrowLeft } from "lucide-react";
+import logoRevivo from "@/assets/logo-revivo.svg";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
@@ -132,9 +133,7 @@ export default function Auth() {
         >
           {/* Logo */}
           <div className="text-center mb-8">
-            <div className="w-16 h-16 rounded-full bg-primary mx-auto flex items-center justify-center shadow-soft mb-4">
-              <Leaf className="w-8 h-8 text-primary-foreground" />
-            </div>
+            <img src={logoRevivo} alt="REVIVO" className="h-16 w-auto mx-auto mb-4" />
             <h1 className="font-heading text-3xl text-foreground font-semibold">
               {isLogin ? "Bon retour !" : "Créer votre compte REVIVO"}
             </h1>
