@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { User, LogOut, History, Shield, LayoutDashboard } from "lucide-react";
-import logoRevivo from "@/assets/logo-revivo.png";
+import logoRevivo from "@/assets/logo-revivo.svg";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdminRole } from "@/hooks/useAdminRole";
