@@ -1,41 +1,64 @@
 
 
-# Correction de l'authentification Orbit
+# Remplacement du logo REVIVO partout
 
-## Probleme identifie
+## Etat actuel
 
-L'API Orbit retourne `auth_unavailable: no auth available` (erreur 500). Le code actuel envoie le token avec le header `Authorization: Bearer ...` (format OpenAI), mais Orbit est un proxy de type Anthropic qui attend probablement le header `x-api-key` a la place.
+Le nouveau logo SVG est deja en place dans :
+- **Header.tsx** : utilise `logo-revivo.svg` (OK)
+- **index.html** : favicon pointe vers `/logo-revivo.svg` (OK)
 
-Ta configuration originale utilise le champ `ANTHROPIC_AUTH_TOKEN`, ce qui confirme cette hypothese.
+## Endroits a mettre a jour
 
-## Solution
+### 1. Page Auth.tsx (connexion/inscription)
+Actuellement, la page affiche une **icone Leaf** generique dans un cercle au lieu du vrai logo REVIVO. Il faut remplacer ce bloc par le logo SVG.
 
-Modifier le header d'authentification dans l'edge function `restore-photo` pour envoyer le token dans **les deux formats** afin de maximiser la compatibilite :
-
-### Fichier : `supabase/functions/restore-photo/index.ts`
-
-**Avant (ligne 276-278) :**
-```typescript
-headers: {
-  "Authorization": `Bearer ${ORBIT_AUTH_TOKEN}`,
-  "Content-Type": "application/json",
-},
+**Avant :**
+```tsx
+<div className="w-16 h-16 rounded-full bg-primary mx-auto flex items-center justify-center shadow-soft mb-4">
+  <Leaf className="w-8 h-8 text-primary-foreground" />
+</div>
 ```
 
 **Apres :**
-```typescript
-headers: {
-  "Authorization": `Bearer ${ORBIT_AUTH_TOKEN}`,
-  "x-api-key": ORBIT_AUTH_TOKEN,
-  "Content-Type": "application/json",
-},
+```tsx
+<img src={logoRevivo} alt="REVIVO" className="h-16 w-auto mx-auto mb-4" />
 ```
 
-Cela envoie le token dans les deux formats (`Bearer` pour OpenAI-compatible et `x-api-key` pour Anthropic-compatible), garantissant que le proxy Orbit reconnaisse l'authentification quel que soit le format attendu.
+Ajout de l'import en haut du fichier :
+```tsx
+import logoRevivo from "@/assets/logo-revivo.svg";
+```
 
-## Etapes
+### 2. Footer de Index.tsx (pied de page)
+Le footer utilise une icone Sparkles + texte "REVIVO". On remplace par le vrai logo.
 
-1. Modifier les headers dans `restore-photo/index.ts` (ligne 276-278)
-2. Redeployer la fonction
-3. Tester une restauration avec Orbit
+**Avant :**
+```tsx
+<div className="flex items-center gap-2">
+  <Sparkles className="w-4 h-4 text-primary" />
+  <span className="font-heading text-sm font-semibold text-foreground">REVIVO</span>
+</div>
+```
+
+**Apres :**
+```tsx
+<img src={logoRevivo} alt="REVIVO" className="h-8 w-auto" />
+```
+
+Ajout de l'import en haut du fichier :
+```tsx
+import logoRevivo from "@/assets/logo-revivo.svg";
+```
+
+## Resume des fichiers a modifier
+
+| Fichier | Modification |
+|---|---|
+| `src/pages/Auth.tsx` | Remplacer icone Leaf par le logo SVG |
+| `src/pages/Index.tsx` | Remplacer icone Sparkles + texte par le logo SVG dans le footer |
+
+## Fichiers deja a jour (aucune action)
+- `src/components/Header.tsx` - logo SVG deja en place
+- `index.html` - favicon SVG deja en place
 
