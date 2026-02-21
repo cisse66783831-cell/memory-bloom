@@ -275,6 +275,7 @@ serve(async (req) => {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${ORBIT_AUTH_TOKEN}`,
+          "x-api-key": ORBIT_AUTH_TOKEN,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
