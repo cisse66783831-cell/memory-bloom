@@ -768,8 +768,6 @@ export type Database = {
         }
         Returns: boolean
       }
-      lookup_partner_code: { Args: { code: string }; Returns: string }
-      lookup_referral_code: { Args: { code: string }; Returns: string }
     }
     Enums: {
       app_role: "admin" | "moderator" | "user"

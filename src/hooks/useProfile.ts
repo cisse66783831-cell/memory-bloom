@@ -133,13 +133,16 @@ export function useLookupReferralCode() {
   return useMutation({
     mutationFn: async (referralCode: string): Promise<{ userId: string } | null> => {
       const { data, error } = await supabase
-        .rpc("lookup_referral_code", { code: referralCode.toUpperCase() });
+        .from("profiles")
+        .select("user_id")
+        .eq("referral_code", referralCode.toUpperCase())
+        .single();
 
       if (error || !data) {
         return null;
       }
 
-      return { userId: data as string };
+      return { userId: data.user_id };
     },
   });
 }
