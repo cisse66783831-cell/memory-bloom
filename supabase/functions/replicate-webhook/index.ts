@@ -14,17 +14,22 @@ serve(async (req) => {
   try {
     const body = await req.text();
 
-    // Verify webhook secret if configured
+    // Verify webhook secret (mandatory)
     const webhookSecret = Deno.env.get("REPLICATE_WEBHOOK_SECRET");
-    if (webhookSecret) {
-      const signature = req.headers.get("Webhook-Secret");
-      if (signature !== webhookSecret) {
-        console.error("Invalid webhook secret");
-        return new Response(JSON.stringify({ error: "Invalid signature" }), {
-          status: 401,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
+    if (!webhookSecret) {
+      console.error("REPLICATE_WEBHOOK_SECRET is not configured");
+      return new Response(JSON.stringify({ error: "Server misconfiguration" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const signature = req.headers.get("Webhook-Secret");
+    if (signature !== webhookSecret) {
+      console.error("Invalid webhook secret");
+      return new Response(JSON.stringify({ error: "Invalid signature" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const payload = JSON.parse(body);
