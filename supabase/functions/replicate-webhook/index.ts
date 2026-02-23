@@ -12,8 +12,22 @@ serve(async (req) => {
   }
 
   try {
-    const payload = await req.json();
+    const body = await req.text();
 
+    // Verify webhook secret if configured
+    const webhookSecret = Deno.env.get("REPLICATE_WEBHOOK_SECRET");
+    if (webhookSecret) {
+      const signature = req.headers.get("Webhook-Secret");
+      if (signature !== webhookSecret) {
+        console.error("Invalid webhook secret");
+        return new Response(JSON.stringify({ error: "Invalid signature" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    const payload = JSON.parse(body);
     console.log("Webhook received:", JSON.stringify({ id: payload.id, status: payload.status }));
 
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
