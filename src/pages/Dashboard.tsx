@@ -1,14 +1,14 @@
 import { useEffect } from "react";
 import { motion } from "framer-motion";
 import { useNavigate, Link } from "react-router-dom";
-import { Camera, AlertCircle, Loader2, Mail, MessageCircle } from "lucide-react";
+import { Camera, Loader2, MessageCircle } from "lucide-react";
 import { Header } from "@/components/Header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/contexts/AuthContext";
-import { useProfile, useReferralStats, useResendVerificationEmail } from "@/hooks/useProfile";
-import { useToast } from "@/hooks/use-toast";
+import { useProfile, useReferralStats } from "@/hooks/useProfile";
+
 import { DashboardStats } from "@/components/dashboard/DashboardStats";
 import { ActiveSubscription } from "@/components/dashboard/ActiveSubscription";
 import { PhotosSection } from "@/components/dashboard/PhotosSection";
@@ -21,32 +21,12 @@ export default function Dashboard() {
   const { user, isLoading: authLoading } = useAuth();
   const { data: profile, isLoading: profileLoading } = useProfile();
   const { data: referralStats } = useReferralStats();
-  const resendEmail = useResendVerificationEmail();
-  const { toast } = useToast();
 
   useEffect(() => {
     if (!authLoading && !user) {
       navigate("/auth");
     }
   }, [user, authLoading, navigate]);
-
-  const handleResendVerification = async () => {
-    if (!user?.email) return;
-
-    try {
-      await resendEmail.mutateAsync(user.email);
-      toast({
-        title: "Email envoyé !",
-        description: "Vérifiez votre boîte de réception",
-      });
-    } catch {
-      toast({
-        title: "Erreur",
-        description: "Impossible d'envoyer l'email",
-        variant: "destructive",
-      });
-    }
-  };
 
   if (authLoading || profileLoading) {
     return (
@@ -91,42 +71,6 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Email Verification Banner */}
-          {!profile?.email_verified && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl flex items-center justify-between gap-4 flex-wrap"
-            >
-              <div className="flex items-center gap-3">
-                <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0" />
-                <div>
-                  <p className="font-medium text-amber-800 dark:text-amber-200">
-                    Vérifiez votre email
-                  </p>
-                  <p className="text-sm text-amber-700 dark:text-amber-300">
-                    Pour activer les récompenses de parrainage
-                  </p>
-                </div>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleResendVerification}
-                disabled={resendEmail.isPending}
-                className="border-amber-300 text-amber-700 hover:bg-amber-100"
-              >
-                {resendEmail.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <>
-                    <Mail className="h-4 w-4 mr-2" />
-                    Renvoyer l'email
-                  </>
-                )}
-              </Button>
-            </motion.div>
-          )}
 
           {/* Main CTA */}
           <Card className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border-primary/20">
