@@ -1,87 +1,72 @@
 
 
-# Plan de modifications REVIVO
+# Correction du bug des previews avant/apres
 
-## 1. Bouton admin sur la page de paiement
+## Probleme identifie
 
-**Probleme** : Les boutons WhatsApp "Envoyer la preuve" et "Rejoindre la communaute" sont affiches en bas de la section paiement, visibles par tous. Le bouton WhatsApp de preuve est utile mais le probleme est qu'un utilisateur non inscrit qui envoie la preuve par WhatsApp ne sera pas identifie dans le systeme.
+Le systeme a **deux providers IA** : Replicate (asynchrone via webhook) et Orbit (synchrone). Le bug vient d'un decalage entre le backend et le frontend :
 
-**Solution** :
-- Garder le bouton WhatsApp "Envoyer la preuve" dans la page de paiement mais le rendre plus petit (taille `sm`, style discret)
-- Deplacer le bouton "Rejoindre la communaute" dans le Dashboard (espace utilisateur)
-- Rendre le bouton WhatsApp de preuve accessible UNIQUEMENT apres que l'utilisateur ait rempli ses infos (email/compte) pour eviter les envois anonymes
+1. **Orbit** termine la restauration immediatement et met le statut a `"completed"` + sauvegarde l'image dans `restored_image_path`
+2. **Le polling frontend** (RestorationContext.tsx, ligne 117) ne verifie QUE le statut `"preview_ready"` et QUE le champ `preview_image_path`
+3. Resultat : le polling ne detecte jamais l'image restauree, tourne 5 minutes, puis timeout
+4. L'image "apres" retombe sur `DEMO_AFTER` (une photo stock Unsplash sans rapport avec la photo de l'utilisateur) a cause du fallback ligne 99
 
-**Fichiers modifies** :
-- `src/components/PaymentSection.tsx` : reduire les boutons WhatsApp, supprimer "Rejoindre la communaute"
-- `src/pages/Dashboard.tsx` : ajouter un lien "Rejoindre la communaute" dans l'espace utilisateur
+## Solution
 
----
+### Fichier : `src/contexts/RestorationContext.tsx`
 
-## 2. Images d'Africains avec effet avant/apres sur la landing page
-
-**Probleme** : Les images d'exemple actuelles (`before-1.jpg`, `after-1.jpg`, etc.) ne representent pas le public cible africain.
-
-**Solution** :
-- Generer 3 paires d'images (avant/apres) representant des Africains avec l'IA integree (modele `google/gemini-3-pro-image-preview`)
-- Remplacer les images existantes dans `src/assets/examples/`
-- Mettre a jour les titres/descriptions dans `ExamplesGallery.tsx` pour correspondre au contexte africain
-
-**Fichiers modifies** :
-- `src/assets/examples/before-1.jpg` a `after-3.jpg` : remplaces par des images generees
-- `src/components/ExamplesGallery.tsx` : mise a jour des titres
-
----
-
-## 3. Limite de 2 generations gratuites sans paiement valide
-
-**Probleme** : Actuellement, il n'y a aucune limite sur le nombre de generations qu'un utilisateur peut faire sans payer. Cela entraine une perte de credits IA.
-
-**Solution** :
-- Ajouter une verification dans l'edge function `restore-photo` : compter le nombre de restaurations non payees pour le `session_id` ou `user_id`
-- Si >= 2 restaurations non payees existent, bloquer la generation et retourner une erreur
-- Cote frontend, afficher un message clair invitant l'utilisateur a payer une restauration existante avant d'en lancer une nouvelle
-
-### Detail technique
-
-**Edge function `restore-photo/index.ts`** :
-Apres la verification du `restorationId`, ajouter :
+**Correction 1 — Polling elargi (ligne 101-103)**
+Ajouter `restored_image_path` au select du polling :
 ```text
-// Compter les restaurations non payees pour cette session/user
-const { count } = await supabase
-  .from("photo_restorations")
-  .select("id", { count: "exact", head: true })
-  .eq("session_id", sessionId)
-  .eq("is_paid", false)
-  .in("status", ["preview_ready", "processing", "pending"]);
-
-if (count >= 2) {
-  return error "Limite atteinte : payez une restauration existante"
-}
+Avant :  .select("status, preview_image_path, used_model_id")
+Apres :  .select("status, preview_image_path, restored_image_path, used_model_id")
 ```
 
-**Frontend `RestorationContext.tsx`** :
-- Transmettre le `session_id` dans le body de l'appel a `restore-photo`
-- Gerer l'erreur de limite et afficher un toast avec un message clair
+**Correction 2 — Condition de detection (ligne 117)**
+Accepter aussi le statut `"completed"` et le chemin `restored_image_path` :
+```text
+Avant :
+if (dbRestoration?.status === "preview_ready" && dbRestoration.preview_image_path)
 
-**Frontend `PhotoUploader.tsx` ou `Index.tsx`** :
-- Afficher un avertissement si la limite est atteinte, avec un lien vers le dashboard
+Apres :
+if (
+  (dbRestoration?.status === "preview_ready" || dbRestoration?.status === "completed") &&
+  (dbRestoration.preview_image_path || dbRestoration.restored_image_path)
+)
+```
 
-**Fichiers modifies** :
-- `supabase/functions/restore-photo/index.ts` : ajout du controle de limite
-- `src/contexts/RestorationContext.tsx` : gestion de l'erreur de limite
-- `src/pages/Index.tsx` : affichage du message de limite
+**Correction 3 — Chemin image dynamique (ligne 122-124)**
+Utiliser le chemin disponible (preview OU restored) :
+```text
+Avant :
+const { data: signed } = await supabase.storage
+  .from("photos")
+  .createSignedUrl(dbRestoration.preview_image_path, 3600);
 
----
+Apres :
+const imagePath = dbRestoration.preview_image_path || dbRestoration.restored_image_path;
+const { data: signed } = await supabase.storage
+  .from("photos")
+  .createSignedUrl(imagePath!, 3600);
+```
 
-## Resume des fichiers a modifier
+**Correction 4 — Supprimer le fallback DEMO_AFTER (Index.tsx, ligne 28 et 98-99)**
+Supprimer la constante `DEMO_AFTER` et ne plus l'utiliser comme fallback, pour eviter qu'une image stock s'affiche a la place du resultat de l'utilisateur :
+```text
+Avant :
+const DEMO_AFTER = "https://images.unsplash.com/...";
+const beforeImage = originalImageUrl || DEMO_AFTER;
+const afterImage = previewImageUrl || restoredImageUrl || DEMO_AFTER;
+
+Apres :
+const beforeImage = originalImageUrl || "";
+const afterImage = previewImageUrl || restoredImageUrl || "";
+```
+
+## Resume
 
 | Fichier | Modification |
 |---|---|
-| `src/components/PaymentSection.tsx` | Reduire boutons WhatsApp, supprimer "Rejoindre la communaute" |
-| `src/pages/Dashboard.tsx` | Ajouter lien communaute WhatsApp |
-| `src/components/ExamplesGallery.tsx` | Mettre a jour titres africains |
-| `src/assets/examples/*` | Generer et remplacer images |
-| `supabase/functions/restore-photo/index.ts` | Limite de 2 generations non payees |
-| `src/contexts/RestorationContext.tsx` | Gerer erreur de limite |
-| `src/pages/Index.tsx` | Affichage message limite |
+| `src/contexts/RestorationContext.tsx` | Polling : detecter "completed" + utiliser restored_image_path |
+| `src/pages/Index.tsx` | Supprimer le fallback DEMO_AFTER qui affiche des images sans rapport |
 
