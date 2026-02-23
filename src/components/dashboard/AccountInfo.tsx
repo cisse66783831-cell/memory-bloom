@@ -97,24 +97,6 @@ export function AccountInfo({ profile, email }: AccountInfoProps) {
           </div>
         ))}
 
-        {/* Email verification CTA */}
-        {!profile?.email_verified && (
-          <div className="pt-4">
-            <Button
-              variant="outline"
-              onClick={handleResendVerification}
-              disabled={resendEmail.isPending}
-              className="w-full"
-            >
-              {resendEmail.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : (
-                <Send className="h-4 w-4 mr-2" />
-              )}
-              Renvoyer l'email de vérification
-            </Button>
-          </div>
-        )}
       </CardContent>
     </Card>
   );
