@@ -25,7 +25,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 
-const DEMO_AFTER = "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=800&q=80&auto=format&fit=crop";
+
 
 const fadeInUp = {
   initial: { opacity: 0, y: 30 },
@@ -95,8 +95,8 @@ function IndexContent() {
     }, 100);
   };
 
-  const beforeImage = originalImageUrl || DEMO_AFTER;
-  const afterImage = previewImageUrl || restoredImageUrl || DEMO_AFTER;
+  const beforeImage = originalImageUrl || "";
+  const afterImage = previewImageUrl || restoredImageUrl || "";
 
   const steps = [
     { icon: Upload, title: "Importez votre photo", desc: "Déposez votre photo ancienne ou abîmée en quelques secondes." },

@@ -100,7 +100,7 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
       try {
         const { data: dbRestoration } = await supabase
           .from("photo_restorations")
-          .select("status, preview_image_path, used_model_id")
+          .select("status, preview_image_path, restored_image_path, used_model_id")
           .eq("id", state.restorationId!)
           .single();
 
@@ -114,14 +114,18 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        if (dbRestoration?.status === "preview_ready" && dbRestoration.preview_image_path) {
+        if (
+          (dbRestoration?.status === "preview_ready" || dbRestoration?.status === "completed") &&
+          (dbRestoration.preview_image_path || dbRestoration.restored_image_path)
+        ) {
           clearInterval(pollIntervalRef.current!);
           // Stop progress animation
           if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
 
+          const imagePath = dbRestoration.preview_image_path || dbRestoration.restored_image_path;
           const { data: signed } = await supabase.storage
             .from("photos")
-            .createSignedUrl(dbRestoration.preview_image_path, 3600);
+            .createSignedUrl(imagePath!, 3600);
 
           const previewUrl = signed?.signedUrl || null;
 
