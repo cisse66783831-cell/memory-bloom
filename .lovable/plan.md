@@ -1,72 +1,102 @@
 
 
-# Correction du bug des previews avant/apres
+# Systeme de Moderateurs de Partenaires (Commerciaux)
 
-## Probleme identifie
+## Concept
 
-Le systeme a **deux providers IA** : Replicate (asynchrone via webhook) et Orbit (synchrone). Le bug vient d'un decalage entre le backend et le frontend :
+Les **moderateurs** sont des commerciaux qui recrutent des **partenaires** (influenceurs). Ils gagnent des commissions pour chaque partenaire recrute et pour chaque inscription faite par les filleuls de leurs partenaires. Ils ont acces aux statistiques de leurs partenaires (nombre d'inscrits, nombre de paiements) mais **pas au chiffre d'affaires**.
 
-1. **Orbit** termine la restauration immediatement et met le statut a `"completed"` + sauvegarde l'image dans `restored_image_path`
-2. **Le polling frontend** (RestorationContext.tsx, ligne 117) ne verifie QUE le statut `"preview_ready"` et QUE le champ `preview_image_path`
-3. Resultat : le polling ne detecte jamais l'image restauree, tourne 5 minutes, puis timeout
-4. L'image "apres" retombe sur `DEMO_AFTER` (une photo stock Unsplash sans rapport avec la photo de l'utilisateur) a cause du fallback ligne 99
+## Modifications de la base de donnees
 
-## Solution
+### 1. Ajouter le role "moderator" a l'enum `app_role`
 
-### Fichier : `src/contexts/RestorationContext.tsx`
+L'enum `app_role` contient deja `admin`, `moderator`, `user`. Le role `moderator` est donc deja disponible.
 
-**Correction 1 — Polling elargi (ligne 101-103)**
-Ajouter `restored_image_path` au select du polling :
-```text
-Avant :  .select("status, preview_image_path, used_model_id")
-Apres :  .select("status, preview_image_path, restored_image_path, used_model_id")
-```
+### 2. Nouvelle colonne dans `profiles`
 
-**Correction 2 — Condition de detection (ligne 117)**
-Accepter aussi le statut `"completed"` et le chemin `restored_image_path` :
-```text
-Avant :
-if (dbRestoration?.status === "preview_ready" && dbRestoration.preview_image_path)
+Ajouter `recruited_by_moderator_id` (uuid, nullable) dans la table `profiles` pour lier un partenaire a son moderateur recruteur.
 
-Apres :
-if (
-  (dbRestoration?.status === "preview_ready" || dbRestoration?.status === "completed") &&
-  (dbRestoration.preview_image_path || dbRestoration.restored_image_path)
-)
-```
+### 3. Nouvelle table `moderator_commissions`
 
-**Correction 3 — Chemin image dynamique (ligne 122-124)**
-Utiliser le chemin disponible (preview OU restored) :
-```text
-Avant :
-const { data: signed } = await supabase.storage
-  .from("photos")
-  .createSignedUrl(dbRestoration.preview_image_path, 3600);
+| Colonne | Type | Description |
+|---|---|---|
+| id | uuid | Cle primaire |
+| moderator_user_id | uuid | L'ID du moderateur |
+| partner_user_id | uuid | Le partenaire recrute |
+| reason | text | "partner_recruited" ou "partner_referral_signup" |
+| commission_amount | integer | Montant (ex: 500 F par partenaire recrute) |
+| status | text | "pending" / "paid" |
+| created_at | timestamp | Date |
 
-Apres :
-const imagePath = dbRestoration.preview_image_path || dbRestoration.restored_image_path;
-const { data: signed } = await supabase.storage
-  .from("photos")
-  .createSignedUrl(imagePath!, 3600);
-```
+Avec RLS : les moderateurs voient leurs propres commissions, les admins voient tout.
 
-**Correction 4 — Supprimer le fallback DEMO_AFTER (Index.tsx, ligne 28 et 98-99)**
-Supprimer la constante `DEMO_AFTER` et ne plus l'utiliser comme fallback, pour eviter qu'une image stock s'affiche a la place du resultat de l'utilisateur :
-```text
-Avant :
-const DEMO_AFTER = "https://images.unsplash.com/...";
-const beforeImage = originalImageUrl || DEMO_AFTER;
-const afterImage = previewImageUrl || restoredImageUrl || DEMO_AFTER;
+### 4. Nouvelle table `moderator_payouts`
 
-Apres :
-const beforeImage = originalImageUrl || "";
-const afterImage = previewImageUrl || restoredImageUrl || "";
-```
+Meme structure que `partner_payouts` mais pour les moderateurs.
 
-## Resume
+## Modifications Admin
 
-| Fichier | Modification |
+### Fichier : `src/components/admin/AdminUsersTable.tsx`
+
+- Ajouter un bouton "Nommer moderateur" a cote du bouton existant d'ajustement de solde
+- Ajouter un bouton "Nommer partenaire" (manquant actuellement dans le tableau des utilisateurs)
+- Lors de la nomination d'un partenaire, permettre de selectionner un moderateur recruteur
+
+### Fichier : `src/pages/Admin.tsx`
+
+- Ajouter un onglet "Moderateurs" avec les stats des moderateurs et la liste de leurs partenaires
+
+### Nouveau fichier : `src/components/admin/AdminModeratorsTable.tsx`
+
+- Liste des moderateurs avec : nombre de partenaires recrutes, commissions totales, demandes de versement
+- Vue detaillee des partenaires de chaque moderateur
+
+## Page Moderateur
+
+### Nouveau fichier : `src/pages/Moderator.tsx`
+
+Dashboard dedie pour les moderateurs avec :
+- Lien de recrutement partenaire unique
+- Nombre de partenaires recrutes
+- Pour chaque partenaire : nombre d'inscrits et nombre de paiements (PAS le montant)
+- Commissions gagnees et demande de versement
+
+### Nouveau fichier : `src/hooks/useModerator.ts`
+
+- `useModeratorStatus()` : verifier le role moderateur
+- `useModeratorStats()` : stats globales
+- `useModeratorPartners()` : liste des partenaires avec stats filtrees (pas de CA)
+- `useModeratorCommissions()` : commissions du moderateur
+- `useModeratorPayouts()` : historique des versements
+
+## Routing
+
+### Fichier : `src/App.tsx`
+
+- Ajouter la route `/moderator` pointant vers `Moderator.tsx`
+
+### Fichier : `src/components/Header.tsx`
+
+- Ajouter un lien "Espace Commercial" visible uniquement pour les moderateurs
+
+## Hooks et securite
+
+### Nouveau fichier : `src/hooks/useModeratorRole.ts`
+
+- Verifier dans `user_roles` si l'utilisateur a le role `moderator`
+
+## Resume des fichiers
+
+| Fichier | Action |
 |---|---|
-| `src/contexts/RestorationContext.tsx` | Polling : detecter "completed" + utiliser restored_image_path |
-| `src/pages/Index.tsx` | Supprimer le fallback DEMO_AFTER qui affiche des images sans rapport |
+| Migration SQL | Ajouter colonne `recruited_by_moderator_id`, tables `moderator_commissions` et `moderator_payouts` |
+| `src/components/admin/AdminUsersTable.tsx` | Boutons "Nommer moderateur" et "Nommer partenaire" |
+| `src/components/admin/AdminModeratorsTable.tsx` | Nouveau - onglet moderateurs dans admin |
+| `src/pages/Admin.tsx` | Ajouter onglet "Moderateurs" |
+| `src/pages/Moderator.tsx` | Nouveau - dashboard moderateur |
+| `src/hooks/useModerator.ts` | Nouveau - hooks pour les donnees moderateur |
+| `src/hooks/useModeratorRole.ts` | Nouveau - verification du role |
+| `src/hooks/useAdminPartners.ts` | Ajouter `usePromoteToModerator()` |
+| `src/App.tsx` | Route `/moderator` |
+| `src/components/Header.tsx` | Lien "Espace Commercial" |
 
