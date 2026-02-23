@@ -10,6 +10,7 @@ import History from "./pages/History";
 import Admin from "./pages/Admin";
 import Dashboard from "./pages/Dashboard";
 import Partner from "./pages/Partner";
+import Moderator from "./pages/Moderator";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -28,6 +29,7 @@ const App = () => (
             <Route path="/mes-restaurations" element={<History />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/partner" element={<Partner />} />
+            <Route path="/moderator" element={<Moderator />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
