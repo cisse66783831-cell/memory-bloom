@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { User, LogOut, History, Shield, LayoutDashboard } from "lucide-react";
+import { User, LogOut, History, Shield, LayoutDashboard, Briefcase } from "lucide-react";
 import logoRevivo from "@/assets/logo-revivo.svg";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdminRole } from "@/hooks/useAdminRole";
+import { useModeratorRole } from "@/hooks/useModeratorRole";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -17,6 +18,7 @@ import {
 export function Header() {
   const { user, signOut } = useAuth();
   const { isAdmin } = useAdminRole();
+  const { isModerator } = useModeratorRole();
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
@@ -88,6 +90,14 @@ export function Header() {
                     Mes photos
                   </Link>
                 </DropdownMenuItem>
+                {isModerator && (
+                  <DropdownMenuItem asChild>
+                    <Link to="/moderator" className="flex items-center gap-2 cursor-pointer">
+                      <Briefcase className="w-4 h-4" />
+                      Espace Commercial
+                    </Link>
+                  </DropdownMenuItem>
+                )}
                 {isAdmin && (
                   <DropdownMenuItem asChild>
                     <Link to="/admin" className="flex items-center gap-2 cursor-pointer">

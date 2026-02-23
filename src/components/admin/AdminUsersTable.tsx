@@ -20,9 +20,17 @@ import {
 } from "@/components/ui/dialog";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
-import { Users, Check, X, Eye, Sparkles, Search, Loader2 } from "lucide-react";
+import { Users, Check, X, Eye, Sparkles, Search, Loader2, Shield, Building2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { usePromoteToPartner } from "@/hooks/useAdminPartners";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface UserProfile {
   id: string;
@@ -58,6 +66,61 @@ export function AdminUsersTable({
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [adjustAmount, setAdjustAmount] = useState("");
   const [isAdjusting, setIsAdjusting] = useState(false);
+  const [promotingRole, setPromotingRole] = useState<"moderator" | "partner" | null>(null);
+  const [promoteUserId, setPromoteUserId] = useState<string | null>(null);
+  const [selectedModeratorId, setSelectedModeratorId] = useState<string>("");
+  const [isPromoting, setIsPromoting] = useState(false);
+  const [moderators, setModerators] = useState<{ user_id: string; first_name: string | null; last_name: string | null }[]>([]);
+  const promoteToPartner = usePromoteToPartner();
+
+  // Load moderators for partner assignment
+  const loadModerators = async () => {
+    const { data: roles } = await supabase.from("user_roles").select("user_id").eq("role", "moderator");
+    if (!roles || roles.length === 0) { setModerators([]); return; }
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("user_id, first_name, last_name")
+      .in("user_id", roles.map((r) => r.user_id));
+    setModerators(profiles || []);
+  };
+
+  const handlePromote = async () => {
+    if (!promoteUserId || !promotingRole) return;
+    setIsPromoting(true);
+    try {
+      if (promotingRole === "moderator") {
+        // Insert moderator role
+        const { error } = await supabase.from("user_roles").insert({
+          user_id: promoteUserId,
+          role: "moderator" as const,
+        });
+        if (error) throw error;
+        toast({ title: "Modérateur nommé", description: "L'utilisateur est maintenant modérateur." });
+      } else {
+        // Promote to partner with optional moderator link
+        await promoteToPartner.mutateAsync(promoteUserId);
+        if (selectedModeratorId) {
+          await supabase
+            .from("profiles")
+            .update({ recruited_by_moderator_id: selectedModeratorId })
+            .eq("user_id", promoteUserId);
+        }
+        toast({ title: "Partenaire nommé", description: "L'utilisateur est maintenant partenaire." });
+      }
+      setPromotingRole(null);
+      setPromoteUserId(null);
+      setSelectedModeratorId("");
+      onRefresh();
+    } catch (error) {
+      toast({
+        title: "Erreur",
+        description: error instanceof Error ? error.message : "Une erreur est survenue",
+        variant: "destructive",
+      });
+    } finally {
+      setIsPromoting(false);
+    }
+  };
 
   const filteredUsers = users.filter((user) => {
     const search = searchTerm.toLowerCase();
@@ -197,6 +260,7 @@ export function AdminUsersTable({
                           <Button
                             variant="ghost"
                             size="icon"
+                            title="Ajuster solde"
                             onClick={() => {
                               setSelectedUser(user);
                               setAdjustAmount(String(user.free_generations_balance));
@@ -204,8 +268,28 @@ export function AdminUsersTable({
                           >
                             <Sparkles className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon">
-                            <Eye className="h-4 w-4" />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Nommer modérateur"
+                            onClick={() => {
+                              setPromotingRole("moderator");
+                              setPromoteUserId(user.user_id);
+                            }}
+                          >
+                            <Shield className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Nommer partenaire"
+                            onClick={() => {
+                              setPromotingRole("partner");
+                              setPromoteUserId(user.user_id);
+                              loadModerators();
+                            }}
+                          >
+                            <Building2 className="h-4 w-4" />
                           </Button>
                         </div>
                       </TableCell>
@@ -249,6 +333,50 @@ export function AdminUsersTable({
             <Button onClick={handleAdjustBalance} disabled={isAdjusting}>
               {isAdjusting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               Mettre à jour
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Promote Dialog */}
+      <Dialog open={!!promotingRole} onOpenChange={() => { setPromotingRole(null); setPromoteUserId(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {promotingRole === "moderator" ? "Nommer modérateur" : "Nommer partenaire"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              Confirmer la nomination de cet utilisateur comme{" "}
+              <strong>{promotingRole === "moderator" ? "modérateur (commercial)" : "partenaire (influenceur)"}</strong> ?
+            </p>
+            {promotingRole === "partner" && moderators.length > 0 && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Modérateur recruteur (optionnel)</label>
+                <Select value={selectedModeratorId} onValueChange={setSelectedModeratorId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Aucun modérateur" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Aucun</SelectItem>
+                    {moderators.map((m) => (
+                      <SelectItem key={m.user_id} value={m.user_id}>
+                        {m.first_name || ""} {m.last_name || ""} 
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setPromotingRole(null); setPromoteUserId(null); }}>
+              Annuler
+            </Button>
+            <Button onClick={handlePromote} disabled={isPromoting}>
+              {isPromoting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Confirmer
             </Button>
           </DialogFooter>
         </DialogContent>

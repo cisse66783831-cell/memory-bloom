@@ -119,6 +119,89 @@ export type Database = {
         }
         Relationships: []
       }
+      moderator_commissions: {
+        Row: {
+          commission_amount: number
+          created_at: string
+          id: string
+          moderator_user_id: string
+          partner_user_id: string
+          reason: string
+          status: string
+        }
+        Insert: {
+          commission_amount?: number
+          created_at?: string
+          id?: string
+          moderator_user_id: string
+          partner_user_id: string
+          reason: string
+          status?: string
+        }
+        Update: {
+          commission_amount?: number
+          created_at?: string
+          id?: string
+          moderator_user_id?: string
+          partner_user_id?: string
+          reason?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "moderator_commissions_moderator_user_id_fkey"
+            columns: ["moderator_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "moderator_commissions_partner_user_id_fkey"
+            columns: ["partner_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      moderator_payouts: {
+        Row: {
+          amount: number
+          approved_at: string | null
+          id: string
+          moderator_user_id: string
+          paid_at: string | null
+          requested_at: string
+          status: string
+        }
+        Insert: {
+          amount: number
+          approved_at?: string | null
+          id?: string
+          moderator_user_id: string
+          paid_at?: string | null
+          requested_at?: string
+          status?: string
+        }
+        Update: {
+          amount?: number
+          approved_at?: string | null
+          id?: string
+          moderator_user_id?: string
+          paid_at?: string | null
+          requested_at?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "moderator_payouts_moderator_user_id_fkey"
+            columns: ["moderator_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       optimization_logs: {
         Row: {
           created_at: string
@@ -343,6 +426,7 @@ export type Database = {
           partner_commission_balance: number | null
           phone_number: string | null
           phone_verified: boolean | null
+          recruited_by_moderator_id: string | null
           referral_code: string | null
           referred_by_user_id: string | null
           updated_at: string
@@ -363,6 +447,7 @@ export type Database = {
           partner_commission_balance?: number | null
           phone_number?: string | null
           phone_verified?: boolean | null
+          recruited_by_moderator_id?: string | null
           referral_code?: string | null
           referred_by_user_id?: string | null
           updated_at?: string
@@ -383,12 +468,20 @@ export type Database = {
           partner_commission_balance?: number | null
           phone_number?: string | null
           phone_verified?: boolean | null
+          recruited_by_moderator_id?: string | null
           referral_code?: string | null
           referred_by_user_id?: string | null
           updated_at?: string
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "profiles_recruited_by_moderator_id_fkey"
+            columns: ["recruited_by_moderator_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
           {
             foreignKeyName: "profiles_referred_by_user_id_fkey"
             columns: ["referred_by_user_id"]

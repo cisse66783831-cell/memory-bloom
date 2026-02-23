@@ -17,6 +17,7 @@ import {
   TrendingUp,
   Building2,
   Brain,
+  Briefcase,
   Loader2,
 } from "lucide-react";
 import { AdminKPICards } from "@/components/admin/AdminKPICards";
@@ -28,6 +29,7 @@ import { AdminPromoCodes } from "@/components/admin/AdminPromoCodes";
 import { AdminPartnersTable } from "@/components/admin/AdminPartnersTable";
 import { AdminAIModels } from "@/components/admin/AdminAIModels";
 import { AdminFinancialInsights } from "@/components/admin/AdminFinancialInsights";
+import { AdminModeratorsTable } from "@/components/admin/AdminModeratorsTable";
 import { format, subDays, startOfMonth, startOfDay } from "date-fns";
 import { fr } from "date-fns/locale";
 
@@ -353,6 +355,10 @@ const Admin = () => {
                 <Brain className="h-4 w-4" />
                 Modèles IA
               </TabsTrigger>
+              <TabsTrigger value="moderators" className="flex items-center gap-1.5">
+                <Briefcase className="h-4 w-4" />
+                Modérateurs
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview">
@@ -402,6 +408,10 @@ const Admin = () => {
 
             <TabsContent value="ai-models">
               <AdminAIModels />
+            </TabsContent>
+
+            <TabsContent value="moderators">
+              <AdminModeratorsTable />
             </TabsContent>
           </Tabs>
         </motion.div>
