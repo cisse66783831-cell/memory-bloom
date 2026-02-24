@@ -172,22 +172,7 @@ serve(async (req) => {
 
     supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
-    // === LIMIT CHECK: max 2 unpaid generations per session/user ===
-    if (clientSessionId) {
-      const { count } = await supabase
-        .from("photo_restorations")
-        .select("id", { count: "exact", head: true })
-        .eq("session_id", clientSessionId)
-        .eq("is_paid", false)
-        .in("status", ["preview_ready", "processing", "pending", "completed"]);
-
-      if (count !== null && count >= 2) {
-        return new Response(
-          JSON.stringify({ error: "LIMIT_REACHED", message: "Vous avez atteint la limite de 2 restaurations gratuites. Veuillez payer une restauration existante avant d'en lancer une nouvelle." }),
-          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-    }
+    // Limit check removed — no restriction on free generations
 
     // Mark as processing
     await supabase
