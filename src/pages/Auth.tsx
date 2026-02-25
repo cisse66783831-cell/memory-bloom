@@ -53,11 +53,7 @@ export default function Auth() {
         title: "Connexion réussie !",
         description: "Bienvenue sur REVIVO.",
       });
-      if (redirectParam === "restore") {
-        navigate("/?restore=1");
-      } else {
-        navigate("/dashboard");
-      }
+      navigate("/dashboard");
     }
   };
 
