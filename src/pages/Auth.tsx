@@ -11,26 +11,18 @@ import { SignupForm } from "@/components/SignupForm";
 import { useLookupReferralCode } from "@/hooks/useProfile";
 
 export default function Auth() {
-  const [isLogin, setIsLogin] = useState(true);
+  const [searchParams] = useSearchParams();
+  const redirectParam = searchParams.get("redirect");
+  const referralCode = searchParams.get("ref");
+  const [isLogin, setIsLogin] = useState(redirectParam !== "restore" && !referralCode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [searchParams] = useSearchParams();
-  const referralCode = searchParams.get("ref");
   
   const { signIn, signUp, signInWithGoogle, user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
   const lookupReferral = useLookupReferralCode();
-
-  // Switch to signup if referral code is present
-  useEffect(() => {
-    if (referralCode) {
-      setIsLogin(false);
-    }
-  }, [referralCode]);
-
-  const redirectParam = searchParams.get("redirect");
 
   // Redirect if already logged in
   useEffect(() => {
