@@ -10,12 +10,13 @@ import {
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import {
-  Image, Eye, Download, CreditCard, Loader2, ImageOff, ShieldCheck, Star, MessageCircle, RefreshCw,
+  Image, Eye, Download, CreditCard, Loader2, ImageOff, ShieldCheck, Star, MessageCircle, RefreshCw, Sparkles,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { useProfile } from "@/hooks/useProfile";
 
 interface Photo {
   id: string;
@@ -49,10 +50,13 @@ function StarRating({ rating }: { rating: number | null }) {
 export const PhotosSection = forwardRef<HTMLDivElement>(function PhotosSection(_props, ref) {
   const { user } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
+  const [unlockingId, setUnlockingId] = useState<string | null>(null);
+  const { data: profile } = useProfile();
 
   const { data: photos, isLoading } = useQuery({
     queryKey: ["user-photos", user?.id],
@@ -135,6 +139,45 @@ export const PhotosSection = forwardRef<HTMLDivElement>(function PhotosSection(_
       `Bonjour Admin, je suis bloqué sur la photo ${photoId.slice(0, 8)}. Aidez-moi svp.`
     );
     window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${message}`, "_blank");
+  };
+
+  const handleUseFreeCreditOrPay = async (photo: Photo) => {
+    const freeBalance = profile?.free_generations_balance || 0;
+    
+    if (freeBalance > 0) {
+      // Use free credit via process-payment
+      setUnlockingId(photo.id);
+      try {
+        const { data: result, error } = await supabase.functions.invoke("process-payment", {
+          body: { restorationId: photo.id },
+        });
+
+        if (error || !result?.success) {
+          throw new Error(result?.error || "Erreur lors de l'utilisation du crédit gratuit");
+        }
+
+        toast({ title: "✅ Photo débloquée !", description: "Votre crédit gratuit a été utilisé. Vous pouvez télécharger la photo HD." });
+        queryClient.invalidateQueries({ queryKey: ["user-photos"] });
+        queryClient.invalidateQueries({ queryKey: ["profile"] });
+        setSelectedPhoto(null);
+
+        // Download immediately if URLs available
+        if (result.downloadUrls?.png) {
+          const link = document.createElement("a");
+          link.href = result.downloadUrls.png;
+          link.download = `REVIVO-HD-${photo.id.slice(0, 8)}.png`;
+          link.click();
+        }
+      } catch (err) {
+        console.error("Free credit error:", err);
+        toast({ title: "Erreur", description: err instanceof Error ? err.message : "Impossible d'utiliser le crédit", variant: "destructive" });
+      } finally {
+        setUnlockingId(null);
+      }
+    } else {
+      // No free credits — navigate to payment page with restoration context
+      window.location.href = `/?pay=${photo.id}`;
+    }
   };
 
   if (isLoading) {
@@ -298,10 +341,22 @@ export const PhotosSection = forwardRef<HTMLDivElement>(function PhotosSection(_
                       <Button
                         className="w-full"
                         size="sm"
-                        onClick={() => setSelectedPhoto(photo)}
+                        onClick={() => handleUseFreeCreditOrPay(photo)}
+                        disabled={unlockingId === photo.id}
                       >
-                        <Eye className="h-4 w-4 mr-1.5" />
-                        VOIR & DÉBLOQUER
+                        {unlockingId === photo.id ? (
+                          <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                        ) : (profile?.free_generations_balance || 0) > 0 ? (
+                          <Sparkles className="h-4 w-4 mr-1.5" />
+                        ) : (
+                          <Eye className="h-4 w-4 mr-1.5" />
+                        )}
+                        {unlockingId === photo.id
+                          ? "Déblocage..."
+                          : (profile?.free_generations_balance || 0) > 0
+                            ? "DÉBLOQUER (crédit gratuit)"
+                            : "VOIR & DÉBLOQUER"
+                        }
                       </Button>
                     )}
 
@@ -368,11 +423,24 @@ export const PhotosSection = forwardRef<HTMLDivElement>(function PhotosSection(_
           </div>
           {selectedPhoto && !selectedPhoto.is_paid && selectedPhoto.preview_image_path && (
             <div className="flex gap-2 pt-2">
-              <Button className="flex-1" asChild>
-                <a href={`/?restore=1&unlock=${selectedPhoto.id}`}>
+              <Button
+                className="flex-1"
+                onClick={() => handleUseFreeCreditOrPay(selectedPhoto)}
+                disabled={unlockingId === selectedPhoto.id}
+              >
+                {unlockingId === selectedPhoto.id ? (
+                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                ) : (profile?.free_generations_balance || 0) > 0 ? (
+                  <Sparkles className="h-4 w-4 mr-1.5" />
+                ) : (
                   <CreditCard className="h-4 w-4 mr-1.5" />
-                  Débloquer le HD
-                </a>
+                )}
+                {unlockingId === selectedPhoto.id
+                  ? "Déblocage..."
+                  : (profile?.free_generations_balance || 0) > 0
+                    ? `Utiliser 1 crédit gratuit (${profile?.free_generations_balance} dispo)`
+                    : "Débloquer le HD (1 000 F)"
+                }
               </Button>
             </div>
           )}

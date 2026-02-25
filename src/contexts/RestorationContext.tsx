@@ -38,6 +38,7 @@ interface RestorationContextType extends RestorationState {
   setStep: (step: RestorationStep) => void;
   setColorize: (colorize: boolean) => void;
   setOutputFormat: (fmt: OutputFormat) => void;
+  loadExistingRestoration: (id: string, originalUrl: string, previewUrl: string) => void;
 }
 
 const RestorationContext = createContext<RestorationContextType | null>(null);
@@ -464,6 +465,17 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const loadExistingRestoration = useCallback((id: string, originalUrl: string, previewUrl: string) => {
+    setState((prev) => ({
+      ...prev,
+      restorationId: id,
+      originalImageUrl: originalUrl,
+      previewImageUrl: previewUrl,
+      restoredImageUrl: previewUrl,
+      step: "comparison" as RestorationStep,
+    }));
+  }, []);
+
   return (
     <RestorationContext.Provider
       value={{
@@ -478,6 +490,7 @@ export function RestorationProvider({ children }: { children: ReactNode }) {
         setStep,
         setColorize,
         setOutputFormat,
+        loadExistingRestoration,
       }}
     >
       {children}

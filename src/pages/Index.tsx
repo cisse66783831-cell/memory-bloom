@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Header } from "@/components/Header";
+import { supabase } from "@/integrations/supabase/client";
 import { PhotoUploader } from "@/components/PhotoUploader";
 import { FloatingPhotoFrame } from "@/components/FloatingPhotoFrame";
 import { ProcessingLoader } from "@/components/ProcessingLoader";
@@ -45,7 +46,7 @@ function IndexContent() {
     step, progress, originalImageUrl, previewImageUrl, restoredImageUrl,
     downloadUrls, error, uploadPhoto, processPayment, checkPaymentStatus, downloadFile, reset, setStep,
     paymentStatus, outputFormat, setOutputFormat, restorationId,
-    userRating, submitRating,
+    userRating, submitRating, loadExistingRestoration,
   } = useRestoration();
 
   const { toast } = useToast();
@@ -62,6 +63,38 @@ function IndexContent() {
       setShowUploader(true);
     }
   }, [searchParams]);
+
+  // Handle ?pay=restorationId — load restoration and jump to payment
+  useEffect(() => {
+    const payId = searchParams.get("pay");
+    if (!payId) return;
+
+    const loadRestorationForPayment = async () => {
+      const { data: restoration } = await supabase
+        .from("photo_restorations")
+        .select("id, original_image_path, preview_image_path, restored_image_path, status")
+        .eq("id", payId)
+        .single();
+
+      if (!restoration || !restoration.preview_image_path) {
+        toast({ title: "Restauration introuvable", variant: "destructive" });
+        return;
+      }
+
+      const [origSigned, previewSigned] = await Promise.all([
+        supabase.storage.from("photos").createSignedUrl(restoration.original_image_path, 3600),
+        supabase.storage.from("photos").createSignedUrl(restoration.preview_image_path, 3600),
+      ]);
+
+      loadExistingRestoration(
+        restoration.id,
+        origSigned.data?.signedUrl || "",
+        previewSigned.data?.signedUrl || "",
+      );
+    };
+
+    loadRestorationForPayment();
+  }, [searchParams, loadExistingRestoration]);
 
   useEffect(() => {
     if (error) {
