@@ -1,102 +1,82 @@
 
 
-# Systeme de Moderateurs de Partenaires (Commerciaux)
+# Analyse de l'infrastructure REVIVO - Problemes identifies
 
-## Concept
+## Etat actuel de la base de donnees
 
-Les **moderateurs** sont des commerciaux qui recrutent des **partenaires** (influenceurs). Ils gagnent des commissions pour chaque partenaire recrute et pour chaque inscription faite par les filleuls de leurs partenaires. Ils ont acces aux statistiques de leurs partenaires (nombre d'inscrits, nombre de paiements) mais **pas au chiffre d'affaires**.
+- **22 paiements** tous en statut `completed`
+- **22 restaurations** : 16 completed/paid, 4 failed/paid, **2 bloquees en `processing` avec `is_paid = true`** (depuis le 15 et 17 fevrier)
+- **0 restaurations non payees** en cours (la limite fonctionne correctement)
+- `max_free_restorations` = 5 (configurable)
+- **1 seul modele IA actif** (`nano-banana`), les 2 autres sont inactifs
 
-## Modifications de la base de donnees
+## Problemes identifies
 
-### 1. Ajouter le role "moderator" a l'enum `app_role`
+### 1. Deux restaurations bloquees en `processing` (is_paid = true)
+Les restaurations `a8bf246a` et `474f89b5` sont en statut `processing` depuis plus d'une semaine avec `is_paid = true`. Le webhook Replicate n'a jamais repondu ou a echoue. Ces enregistrements sont orphelins et faussent potentiellement les statistiques.
 
-L'enum `app_role` contient deja `admin`, `moderator`, `user`. Le role `moderator` est donc deja disponible.
+**Action** : Les passer en `failed` via SQL.
 
-### 2. Nouvelle colonne dans `profiles`
+### 2. Securite RLS : 11 politiques trop permissives (`true`)
+Les tables suivantes ont des politiques INSERT ou UPDATE avec `USING (true)` ou `WITH CHECK (true)` :
+- `photo_restorations` : "Anyone can create restorations" avec `WITH CHECK (true)` — permet a n'importe qui (meme non authentifie) de creer des enregistrements
+- `payments` : "Backend can create/update" avec `true` — necessaire pour les edge functions mais expose la table
+- `referrals`, `promo_code_uses`, `optimization_logs`, `moderator_commissions`, `user_subscriptions`, `partner_commissions` : politiques INSERT/UPDATE trop ouvertes
 
-Ajouter `recruited_by_moderator_id` (uuid, nullable) dans la table `profiles` pour lier un partenaire a son moderateur recruteur.
+Ces politiques `true` sont utilisees pour que les edge functions (qui utilisent le `service_role_key`) puissent operer. Le `service_role_key` bypass RLS de toute facon, donc ces politiques `true` sont en fait un risque : elles permettent aussi au client `anon` d'inserer/modifier des donnees.
 
-### 3. Nouvelle table `moderator_commissions`
+**Action** : Supprimer les politiques "Backend can..." qui sont inutiles (le service role key bypass RLS). Cela ferme les failles sans casser les edge functions.
 
-| Colonne | Type | Description |
-|---|---|---|
-| id | uuid | Cle primaire |
-| moderator_user_id | uuid | L'ID du moderateur |
-| partner_user_id | uuid | Le partenaire recrute |
-| reason | text | "partner_recruited" ou "partner_referral_signup" |
-| commission_amount | integer | Montant (ex: 500 F par partenaire recrute) |
-| status | text | "pending" / "paid" |
-| created_at | timestamp | Date |
+### 3. Doublon de politique INSERT sur `photo_restorations`
+Deux politiques INSERT coexistent :
+- "Anyone can create restorations" (`WITH CHECK (true)`)
+- "Users can insert their own restorations" (`WITH CHECK (auth.uid() = user_id)`)
 
-Avec RLS : les moderateurs voient leurs propres commissions, les admins voient tout.
+La premiere rend la seconde inutile et ouvre la table a tous.
 
-### 4. Nouvelle table `moderator_payouts`
+**Action** : Supprimer "Anyone can create restorations" et modifier "Users can insert their own restorations" pour aussi permettre les insertions anonymes via `WITH CHECK (auth.uid() = user_id OR user_id IS NULL)` (pour les utilisateurs non connectes).
 
-Meme structure que `partner_payouts` mais pour les moderateurs.
+### 4. Erreur console : `Select` sans `forwardRef` dans `AdminAIModels`
+L'erreur `Function components cannot be given refs` vient de l'utilisation directe du composant `Select` de Radix. C'est un warning non bloquant mais visible dans la console.
 
-## Modifications Admin
+### 5. Pas de trigger `handle_new_user` detecte
+La fonction `handle_new_user()` existe mais le trigger n'apparait pas dans la liste des triggers. Si le trigger a ete supprime accidentellement, les nouveaux utilisateurs n'auront pas de profil cree automatiquement.
 
-### Fichier : `src/components/admin/AdminUsersTable.tsx`
+**Action** : Verifier et recreer le trigger si necessaire.
 
-- Ajouter un bouton "Nommer moderateur" a cote du bouton existant d'ajustement de solde
-- Ajouter un bouton "Nommer partenaire" (manquant actuellement dans le tableau des utilisateurs)
-- Lors de la nomination d'un partenaire, permettre de selectionner un moderateur recruteur
+### 6. Configuration AI : modeles inactifs mais references
+`flux-kontext` est `is_active = false` et `status = inactive`. `microsoft` est `is_active = false` mais `status = active` (incoherence).
 
-### Fichier : `src/pages/Admin.tsx`
+**Action** : Aligner les statuts.
 
-- Ajouter un onglet "Moderateurs" avec les stats des moderateurs et la liste de leurs partenaires
+### 7. Pas de suppression possible sur `photo_restorations`
+Aucune politique DELETE n'existe. L'admin ne peut pas nettoyer les restaurations depuis le panneau (seulement via SQL direct).
 
-### Nouveau fichier : `src/components/admin/AdminModeratorsTable.tsx`
+**Action** : Ajouter une politique DELETE pour les admins.
 
-- Liste des moderateurs avec : nombre de partenaires recrutes, commissions totales, demandes de versement
-- Vue detaillee des partenaires de chaque moderateur
+---
 
-## Page Moderateur
+## Plan d'implementation
 
-### Nouveau fichier : `src/pages/Moderator.tsx`
+### Etape 1 : Nettoyage des donnees
+- Passer les 2 restaurations bloquees en `processing` a `failed`
+- Aligner `microsoft` : `status = 'inactive'`
 
-Dashboard dedie pour les moderateurs avec :
-- Lien de recrutement partenaire unique
-- Nombre de partenaires recrutes
-- Pour chaque partenaire : nombre d'inscrits et nombre de paiements (PAS le montant)
-- Commissions gagnees et demande de versement
+### Etape 2 : Securisation RLS (migration SQL)
+- Supprimer les politiques `WITH CHECK (true)` inutiles sur : `payments`, `referrals`, `promo_code_uses`, `optimization_logs`, `moderator_commissions`, `user_subscriptions`, `partner_commissions`
+- Remplacer la politique "Anyone can create restorations" par une version qui autorise `user_id IS NULL OR auth.uid() = user_id`
+- Ajouter une politique DELETE pour les admins sur `photo_restorations`
 
-### Nouveau fichier : `src/hooks/useModerator.ts`
+### Etape 3 : Verifier/recreer le trigger `handle_new_user`
+- S'assurer que le trigger `on_auth_user_created` existe sur `auth.users`
 
-- `useModeratorStatus()` : verifier le role moderateur
-- `useModeratorStats()` : stats globales
-- `useModeratorPartners()` : liste des partenaires avec stats filtrees (pas de CA)
-- `useModeratorCommissions()` : commissions du moderateur
-- `useModeratorPayouts()` : historique des versements
+### Etape 4 : Fix console warning AdminAIModels (mineur)
 
-## Routing
+---
 
-### Fichier : `src/App.tsx`
+## Section technique
 
-- Ajouter la route `/moderator` pointant vers `Moderator.tsx`
+Les politiques `WITH CHECK (true)` sont dangereuses car le client `anon` (accessible publiquement via la cle publishable) peut inserer des lignes dans ces tables. Meme si l'intention etait de permettre aux edge functions d'ecrire, celles-ci utilisent le `service_role_key` qui bypass completement RLS. Donc ces politiques sont a la fois inutiles et dangereuses.
 
-### Fichier : `src/components/Header.tsx`
-
-- Ajouter un lien "Espace Commercial" visible uniquement pour les moderateurs
-
-## Hooks et securite
-
-### Nouveau fichier : `src/hooks/useModeratorRole.ts`
-
-- Verifier dans `user_roles` si l'utilisateur a le role `moderator`
-
-## Resume des fichiers
-
-| Fichier | Action |
-|---|---|
-| Migration SQL | Ajouter colonne `recruited_by_moderator_id`, tables `moderator_commissions` et `moderator_payouts` |
-| `src/components/admin/AdminUsersTable.tsx` | Boutons "Nommer moderateur" et "Nommer partenaire" |
-| `src/components/admin/AdminModeratorsTable.tsx` | Nouveau - onglet moderateurs dans admin |
-| `src/pages/Admin.tsx` | Ajouter onglet "Moderateurs" |
-| `src/pages/Moderator.tsx` | Nouveau - dashboard moderateur |
-| `src/hooks/useModerator.ts` | Nouveau - hooks pour les donnees moderateur |
-| `src/hooks/useModeratorRole.ts` | Nouveau - verification du role |
-| `src/hooks/useAdminPartners.ts` | Ajouter `usePromoteToModerator()` |
-| `src/App.tsx` | Route `/moderator` |
-| `src/components/Header.tsx` | Lien "Espace Commercial" |
+Le trigger `handle_new_user` est critique : sans lui, les nouveaux inscrits n'auront pas de profil, ce qui cassera le parrainage, les credits gratuits et l'affichage du dashboard.
 
