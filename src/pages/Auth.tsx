@@ -30,12 +30,18 @@ export default function Auth() {
     }
   }, [referralCode]);
 
+  const redirectParam = searchParams.get("redirect");
+
   // Redirect if already logged in
   useEffect(() => {
     if (user) {
-      navigate("/dashboard");
+      if (redirectParam === "restore") {
+        navigate("/?restore=1");
+      } else {
+        navigate("/dashboard");
+      }
     }
-  }, [user, navigate]);
+  }, [user, navigate, redirectParam]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,7 +61,11 @@ export default function Auth() {
         title: "Connexion réussie !",
         description: "Bienvenue sur REVIVO.",
       });
-      navigate("/dashboard");
+      if (redirectParam === "restore") {
+        navigate("/?restore=1");
+      } else {
+        navigate("/dashboard");
+      }
     }
   };
 
@@ -99,7 +109,11 @@ export default function Auth() {
       title: "Compte créé !",
       description: "Vérifiez votre email pour activer votre compte.",
     });
-    navigate("/dashboard");
+    if (redirectParam === "restore") {
+      navigate("/?restore=1");
+    } else {
+      navigate("/dashboard");
+    }
     return { error: null };
   };
 

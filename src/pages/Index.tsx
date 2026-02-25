@@ -122,6 +122,10 @@ function IndexContent() {
   const handleSkipUpsell = () => { toast({ title: "Merci !", description: "Profitez de votre souvenir restauré." }); reset(); };
 
   const scrollToUploader = () => {
+    if (!user) {
+      navigate("/auth?redirect=restore");
+      return;
+    }
     setShowUploader(true);
     setTimeout(() => {
       document.getElementById("uploader-section")?.scrollIntoView({ behavior: "smooth" });
