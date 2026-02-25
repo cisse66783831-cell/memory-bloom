@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import heroBeforeAfter from "@/assets/hero-before-after.png";
 
 interface FloatingPhotoFrameProps {
   imageSrc?: string;
@@ -6,7 +7,7 @@ interface FloatingPhotoFrameProps {
 }
 
 export function FloatingPhotoFrame({
-  imageSrc = "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&q=80&auto=format&fit=crop",
+  imageSrc = heroBeforeAfter,
   className = ""
 }: FloatingPhotoFrameProps) {
   return (
