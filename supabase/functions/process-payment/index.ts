@@ -157,6 +157,92 @@ serve(async (req) => {
       );
     }
 
+    // Check for free generations balance first
+    if (restoration.user_id) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("free_generations_balance")
+        .eq("user_id", restoration.user_id)
+        .single();
+
+      if (profile && (profile.free_generations_balance || 0) > 0) {
+        // Use free credit
+        await supabase
+          .from("profiles")
+          .update({ free_generations_balance: (profile.free_generations_balance || 0) - 1 })
+          .eq("user_id", restoration.user_id);
+
+        // Create completed payment with amount 0
+        const { data: payment } = await supabase
+          .from("payments")
+          .insert({
+            restoration_id: restorationId,
+            amount: 0,
+            currency: "XOF",
+            status: "completed",
+            provider: "free_credit",
+            provider_reference: null,
+            sender_phone: senderPhone || null,
+          })
+          .select()
+          .single();
+
+        // Mark restoration as paid
+        await supabase
+          .from("photo_restorations")
+          .update({ is_paid: true, payment_id: payment?.id })
+          .eq("id", restorationId);
+
+        // Unlock image immediately
+        const { data: currentRes } = await supabase
+          .from("photo_restorations")
+          .select("preview_image_path")
+          .eq("id", restorationId)
+          .single();
+
+        if (currentRes?.preview_image_path) {
+          await supabase
+            .from("photo_restorations")
+            .update({
+              status: "completed",
+              restored_image_path: currentRes.preview_image_path,
+            })
+            .eq("id", restorationId);
+
+          const { data: signedData } = await supabase.storage
+            .from("photos")
+            .createSignedUrl(currentRes.preview_image_path, 3600);
+
+          if (signedData?.signedUrl) {
+            return new Response(
+              JSON.stringify({
+                success: true,
+                paymentMethod: "free_credit",
+                status: "completed",
+                paymentId: payment?.id,
+                downloadUrls: {
+                  png: signedData.signedUrl,
+                  pdf: signedData.signedUrl,
+                },
+              }),
+              { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+        }
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            paymentMethod: "free_credit",
+            status: "completed",
+            paymentId: payment?.id,
+            message: "Crédit gratuit utilisé avec succès !",
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     // Check for active subscription
     if (restoration.user_id) {
       const { data: activeSub } = await supabase
