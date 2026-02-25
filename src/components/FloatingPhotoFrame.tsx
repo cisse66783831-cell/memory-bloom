@@ -7,20 +7,20 @@ interface FloatingPhotoFrameProps {
 
 export function FloatingPhotoFrame({
   imageSrc = "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&q=80&auto=format&fit=crop",
-  className = "",
+  className = ""
 }: FloatingPhotoFrameProps) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.8, delay: 0.3 }}
-      className={`relative ${className}`}
-    >
+      className={`relative ${className}`}>
+
       <motion.div
         animate={{ y: [0, -10, 0], rotate: [-2, 2, -2] }}
         transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-        className="relative"
-      >
+        className="relative">
+
         {/* Frame with gold accent */}
         <div className="relative p-3 bg-gradient-to-br from-primary/80 via-primary/60 to-primary/80 rounded-xl shadow-gold">
           <div className="p-1 bg-gradient-to-br from-primary/20 to-primary/10 rounded-lg">
@@ -29,8 +29,8 @@ export function FloatingPhotoFrame({
                 <img
                   src={imageSrc}
                   alt="Photo de famille restaurée"
-                  className="w-full aspect-[4/5] object-cover sepia-[0.15] brightness-[0.95]"
-                />
+                  className="w-full aspect-[4/5] sepia-[0.15] brightness-[0.95] object-fill border-solid rounded" />
+
                 <div className="absolute inset-0 bg-gradient-to-t from-background/20 to-transparent pointer-events-none" />
               </div>
             </div>
@@ -40,6 +40,6 @@ export function FloatingPhotoFrame({
         {/* Glow behind frame */}
         <div className="absolute -inset-8 -z-10 bg-primary/8 blur-3xl rounded-full" />
       </motion.div>
-    </motion.div>
-  );
+    </motion.div>);
+
 }
