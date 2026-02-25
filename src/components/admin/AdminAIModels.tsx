@@ -44,6 +44,7 @@ export const AdminAIModels = () => {
   const [aiProvider, setAiProvider] = useState<string>("replicate");
   const [orbitModel, setOrbitModel] = useState<string>("gemini-3-pro-image-preview");
   const [loading, setLoading] = useState(true);
+  const [maxFreeRestorations, setMaxFreeRestorations] = useState<string>("2");
   const [toggling, setToggling] = useState<string | null>(null);
   const [logs, setLogs] = useState<OptLog[]>([]);
   const [manualSettings, setManualSettings] = useState<Record<string, string>>({
@@ -80,6 +81,7 @@ export const AdminAIModels = () => {
       setMode(map["ai_management_mode"] || "manual");
       setAiProvider(map["ai_provider"] || "replicate");
       setOrbitModel(map["orbit_model"] || "gemini-3-pro-image-preview");
+      setMaxFreeRestorations(map["max_free_restorations"] || "2");
       setManualSettings({
         trial_1_model_id: map["trial_1_model_id"] || "",
         trial_2_model_id: map["trial_2_model_id"] || "",
@@ -371,6 +373,54 @@ export const AdminAIModels = () => {
               </Select>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Limite de restaurations gratuites */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Settings className="h-5 w-5" />
+            Limite de restaurations gratuites
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-4">
+            <Label className="text-sm font-medium min-w-[200px]">
+              Nombre max de restaurations non payées par session
+            </Label>
+            <Input
+              type="number"
+              min="1"
+              max="100"
+              value={maxFreeRestorations}
+              onChange={(e) => setMaxFreeRestorations(e.target.value)}
+              className="w-[100px]"
+            />
+            <Button
+              size="sm"
+              onClick={async () => {
+                const val = parseInt(maxFreeRestorations, 10);
+                if (isNaN(val) || val < 1) {
+                  toast({ title: "Erreur", description: "La limite doit être au moins 1", variant: "destructive" });
+                  return;
+                }
+                const { error } = await supabase
+                  .from("app_settings")
+                  .upsert({ key: "max_free_restorations", value: String(val), updated_at: new Date().toISOString() }, { onConflict: "key" });
+                if (!error) {
+                  toast({ title: "Limite mise à jour", description: `Maximum ${val} restauration(s) gratuite(s) par session` });
+                } else {
+                  toast({ title: "Erreur", description: error.message, variant: "destructive" });
+                }
+              }}
+            >
+              Enregistrer
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            Les utilisateurs doivent payer une restauration existante avant de pouvoir en lancer de nouvelles au-delà de cette limite.
+          </p>
         </CardContent>
       </Card>
 

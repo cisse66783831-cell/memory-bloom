@@ -172,8 +172,22 @@ serve(async (req) => {
 
     supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
-    // === LIMIT CHECK: max 2 unpaid generations per session/user ===
+    // === LIMIT CHECK: configurable max free restorations per session ===
     if (clientSessionId) {
+      // Read limit from app_settings (default 2)
+      let maxFree = 2;
+      try {
+        const { data: limitSetting } = await supabase
+          .from("app_settings")
+          .select("value")
+          .eq("key", "max_free_restorations")
+          .single();
+        if (limitSetting?.value) {
+          const parsed = parseInt(limitSetting.value, 10);
+          if (!isNaN(parsed) && parsed > 0) maxFree = parsed;
+        }
+      } catch { /* use default */ }
+
       const { count } = await supabase
         .from("photo_restorations")
         .select("id", { count: "exact", head: true })
@@ -181,10 +195,9 @@ serve(async (req) => {
         .eq("is_paid", false)
         .in("status", ["preview_ready", "processing", "pending", "completed"]);
 
-      if (count !== null && count >= 2) {
-        // Return 200 with success:false so the Supabase client can read the body
+      if (count !== null && count >= maxFree) {
         return new Response(
-          JSON.stringify({ success: false, error: "LIMIT_REACHED", message: "Vous avez atteint la limite de 2 restaurations gratuites. Veuillez payer une restauration existante avant d'en lancer une nouvelle." }),
+          JSON.stringify({ success: false, error: "LIMIT_REACHED", message: `Vous avez atteint la limite de ${maxFree} restauration(s) gratuite(s). Veuillez payer une restauration existante avant d'en lancer une nouvelle.` }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
