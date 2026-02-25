@@ -27,13 +27,9 @@ export default function Auth() {
   // Redirect if already logged in
   useEffect(() => {
     if (user) {
-      if (redirectParam === "restore") {
-        navigate("/?restore=1");
-      } else {
-        navigate("/dashboard");
-      }
+      navigate("/dashboard");
     }
-  }, [user, navigate, redirectParam]);
+  }, [user, navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
