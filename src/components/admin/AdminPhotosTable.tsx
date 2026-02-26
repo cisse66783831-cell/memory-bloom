@@ -307,7 +307,7 @@ export function AdminPhotosTable({
           return;
         }
 
-        const message = `Bonjour ${userName} 👋\n\nMoi c'est Issa, administrateur de REVIVO. Merci infiniment d'avoir fait confiance à notre service pour restaurer votre photo ! 🎉\n\nVotre image restaurée en haute qualité est prête. Connectez-vous pour la télécharger :\n👉 ${siteUrl}/auth?redirect=dashboard\n\nOu téléchargez directement ici (lien valide 24h) :\n📥 ${signedData.signedUrl}\n\nN'hésitez pas à partager REVIVO avec vos proches pour qu'ils puissent aussi redonner vie à leurs souvenirs ! 📸✨\n\nÀ très bientôt,\nIssa — Équipe REVIVO 💛`;
+        const message = "Bonjour " + userName + ",\n\nMoi c'est Issa, administrateur de REVIVO. Merci d'avoir fait confiance a notre service pour restaurer votre photo !\n\nVotre image restauree en haute qualite est prete. Connectez-vous pour la telecharger :\n" + siteUrl + "/auth?redirect=dashboard\n\nOu telechargez directement ici (lien valide 24h) :\n" + signedData.signedUrl + "\n\nN'hesitez pas a partager REVIVO avec vos proches !\n\nA tres bientot,\nIssa - Equipe REVIVO";
 
         openWhatsApp(cleanPhone, message);
         toast({ title: "WhatsApp ouvert", description: `Message de remerciement envoyé à ${userName}` });
@@ -317,7 +317,7 @@ export function AdminPhotosTable({
       }
     } else {
       // Unpaid: relance message
-      const message = `Bonjour ${userName} 👋\n\nMoi c'est Issa, administrateur de REVIVO. J'espère que vous allez bien !\n\nJe vous contacte car votre photo restaurée est prête et n'attend que vous ! 📸✨\n\nPour seulement 1000F CFA, débloquez votre image en haute qualité et redonnez vie à ce souvenir précieux.\n\n👉 Connectez-vous ici pour finaliser : ${siteUrl}/auth?redirect=dashboard\n\nSi vous avez des questions, n'hésitez pas à me répondre directement ici !\n\nÀ très bientôt,\nIssa — Équipe REVIVO 💛`;
+      const message = "Bonjour " + userName + ",\n\nMoi c'est Issa, administrateur de REVIVO. J'espere que vous allez bien !\n\nJe vous contacte car votre photo restauree est prete et n'attend que vous !\n\nPour seulement 1000F CFA, debloquez votre image en haute qualite et redonnez vie a ce souvenir precieux.\n\nConnectez-vous ici pour finaliser : " + siteUrl + "/auth?redirect=dashboard\n\nSi vous avez des questions, n'hesitez pas a me repondre directement ici !\n\nA tres bientot,\nIssa - Equipe REVIVO";
 
       openWhatsApp(cleanPhone, message);
       toast({ title: "WhatsApp ouvert", description: `Message de relance envoyé à ${userName}` });
@@ -353,7 +353,7 @@ export function AdminPhotosTable({
         const cleanPhone = phone.replace(/[\s\-()]/g, "").replace(/^\+/, "");
         const siteUrl = window.location.origin;
 
-        const message = `Bonjour ${userName} 👋\n\nMoi c'est Issa, administrateur de REVIVO. J'espère que vous allez bien !\n\nVotre photo restaurée est prête et n'attend que vous ! 📸✨\n\nPour seulement 1000F CFA, débloquez votre image en haute qualité.\n\n👉 ${siteUrl}/auth?redirect=dashboard\n\nÀ très bientôt,\nIssa — Équipe REVIVO 💛`;
+        const message = "Bonjour " + userName + ",\n\nMoi c'est Issa, administrateur de REVIVO. J'espere que vous allez bien !\n\nVotre photo restauree est prete et n'attend que vous !\n\nPour seulement 1000F CFA, debloquez votre image en haute qualite.\n\n" + siteUrl + "/auth?redirect=dashboard\n\nA tres bientot,\nIssa - Equipe REVIVO";
 
         openWhatsApp(cleanPhone, message);
         opened++;
