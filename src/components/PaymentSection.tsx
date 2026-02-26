@@ -188,7 +188,7 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle", r
             className="bg-green-600 hover:bg-green-700 text-white rounded-full"
           >
             <a
-              href={`https://wa.me/22666783831?text=${encodeURIComponent(`Bonjour, j'ai effectué un dépôt pour ma restauration photo. ID: ${restorationId || "N/A"}. Voici ma preuve de paiement :`)}`}
+              href={"https://api.whatsapp.com/send?phone=22666783831&text=" + encodeURIComponent("Bonjour, j'ai effectue un depot pour ma restauration photo. ID: " + (restorationId || "N/A") + ". Voici ma preuve de paiement :")}
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -500,7 +500,7 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle", r
             className="rounded-full border-green-600/30 text-green-600 hover:bg-green-600/10"
           >
             <a
-              href={`https://wa.me/22666783831?text=${encodeURIComponent(`Bonjour, j'ai effectué un dépôt pour ma restauration photo. ID: ${restorationId || "N/A"}. Voici ma preuve de paiement :`)}`}
+              href={"https://api.whatsapp.com/send?phone=22666783831&text=" + encodeURIComponent("Bonjour, j'ai effectue un depot pour ma restauration photo. ID: " + (restorationId || "N/A") + ". Voici ma preuve de paiement :")}
               target="_blank"
               rel="noopener noreferrer"
             >

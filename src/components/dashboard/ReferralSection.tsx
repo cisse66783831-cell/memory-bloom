@@ -91,7 +91,7 @@ export function ReferralSection({
   };
 
   const shareToWhatsApp = () => {
-    const url = `https://wa.me/?text=${encodeURIComponent(shareMessage)}`;
+    const url = "https://api.whatsapp.com/send?text=" + encodeURIComponent(shareMessage);
     window.open(url, "_blank");
   };
 
