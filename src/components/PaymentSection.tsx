@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Check, Download, FileImage, FileText, Lock, Shield, Tag, Loader2, Clock, Phone, Copy, CheckCircle2, CreditCard, Sparkles, MessageCircle, Users, Mail, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useValidatePromoCode } from "@/hooks/usePromoCode";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -43,11 +42,8 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle", r
   const { user, signUp } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<PricingTab>("unit");
-  const [showPromoField, setShowPromoField] = useState(false);
-  const [promoInput, setPromoInput] = useState("");
   const [appliedCode, setAppliedCode] = useState<string | null>(null);
   const [discount, setDiscount] = useState(0);
-  const [promoError, setPromoError] = useState<string | null>(null);
   const [selectedMethod, setSelectedMethod] = useState<string | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
   const [depositInstructions, setDepositInstructions] = useState<DepositInstruction[]>([]);
@@ -59,7 +55,6 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle", r
   const [signupLoading, setSignupLoading] = useState(false);
   const { toast } = useToast();
 
-  const validatePromo = useValidatePromoCode();
   const currentPrice = activeTab === "unit" ? UNIT_PRICE : (selectedPlan?.price || 0);
   const finalPrice = Math.max(0, currentPrice - discount);
 
@@ -74,27 +69,6 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle", r
     };
     fetchData();
   }, []);
-
-  const handleApplyPromo = async () => {
-    if (!promoInput.trim()) return;
-    setPromoError(null);
-    const result = await validatePromo.mutateAsync(promoInput.trim());
-    if (result.valid) {
-      setAppliedCode(promoInput.trim().toUpperCase());
-      setDiscount(result.discount);
-    } else {
-      setPromoError(result.message || "Code invalide");
-      setAppliedCode(null);
-      setDiscount(0);
-    }
-  };
-
-  const handleRemovePromo = () => {
-    setAppliedCode(null);
-    setDiscount(0);
-    setPromoInput("");
-    setPromoError(null);
-  };
 
   const handleCopyNumber = (number: string) => {
     navigator.clipboard.writeText(number);
@@ -364,16 +338,10 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle", r
               <span className="inline-flex items-center gap-2 px-3 py-1.5 bg-success/10 text-success rounded-full text-sm font-medium border border-success/20">
                 <Tag className="w-3.5 h-3.5" />
                 <span>{appliedCode} — -{discount} F</span>
-                <button onClick={handleRemovePromo} className="ml-1 hover:text-success/70 transition-colors">✕</button>
               </span>
             </motion.div>
           )}
         </AnimatePresence>
-
-        {/* Applied promo from signup */}
-        {appliedCode && (
-          <div className="mb-6" />
-        )}
 
         {/* Features */}
         <div className="space-y-3 mb-6">

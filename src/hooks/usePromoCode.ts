@@ -83,7 +83,8 @@ export function useValidatePromoCode() {
         return { valid: false, discount: 0, message: "Code épuisé" };
       }
 
-      return { valid: true, discount: promo.discount_amount };
+      // Return 10% discount based on unit price (1000 F)
+      return { valid: true, discount: Math.round(1000 * 0.10) };
     },
   });
 }

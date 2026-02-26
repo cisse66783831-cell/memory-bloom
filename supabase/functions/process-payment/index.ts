@@ -395,7 +395,8 @@ serve(async (req) => {
         }
 
         if (!isExpired && !usageExceeded && isNewUser && !alreadyUsed) {
-          discountAmount = promo.discount_amount;
+          // Apply 10% discount instead of fixed amount
+          discountAmount = Math.round(baseAmount * 0.10);
           appliedPromoCode = promo;
         }
       }
