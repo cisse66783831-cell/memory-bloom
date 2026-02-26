@@ -76,7 +76,7 @@ export function ReferralSection({
   };
 
   const shareMessage = referralCode
-    ? `🎉 J'utilise REVIVO pour restaurer mes anciennes photos et c'est incroyable ! Essaie toi aussi pour redonner vie à tes vieux souvenirs 📸✨ Inscris-toi et profite de -10% sur ta première restauration !\n\n👉 ${window.location.origin}`
+    ? "J'utilise REVIVO pour restaurer mes anciennes photos et c'est incroyable ! Essaie toi aussi pour redonner vie a tes vieux souvenirs. Inscris-toi et profite de -10% sur ta premiere restauration avec mon code : " + referralCode + "\n\n" + window.location.origin
     : "";
 
   const handleCopyMessage = async () => {
