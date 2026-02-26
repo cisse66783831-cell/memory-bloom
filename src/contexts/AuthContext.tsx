@@ -6,7 +6,7 @@ interface SignUpData {
   firstName: string;
   lastName: string;
   phoneNumber: string;
-  referredByUserId?: string;
+  referralCode?: string;
 }
 
 interface AuthContextType {
@@ -57,34 +57,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signUp = async (email: string, password: string, data?: SignUpData) => {
-    const { data: authData, error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         emailRedirectTo: window.location.origin,
+        data: data ? {
+          first_name: data.firstName,
+          last_name: data.lastName,
+          phone_number: data.phoneNumber,
+          referral_code: data.referralCode || undefined,
+        } : undefined,
       },
     });
 
     if (error) {
       return { error: error as Error };
-    }
-
-    // If user was created, update their profile with additional data
-    if (authData.user && data) {
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({
-          first_name: data.firstName,
-          last_name: data.lastName,
-          phone_number: data.phoneNumber,
-          referred_by_user_id: data.referredByUserId || null,
-        })
-        .eq('user_id', authData.user.id);
-
-      if (profileError) {
-        console.error('Error updating profile:', profileError);
-        // Don't fail the signup, profile can be updated later
-      }
     }
 
     return { error: null };
