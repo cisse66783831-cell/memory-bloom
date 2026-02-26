@@ -429,6 +429,7 @@ export type Database = {
           recruited_by_moderator_id: string | null
           referral_code: string | null
           referred_by_user_id: string | null
+          signup_promo_code: string | null
           updated_at: string
           user_id: string
         }
@@ -450,6 +451,7 @@ export type Database = {
           recruited_by_moderator_id?: string | null
           referral_code?: string | null
           referred_by_user_id?: string | null
+          signup_promo_code?: string | null
           updated_at?: string
           user_id: string
         }
@@ -471,6 +473,7 @@ export type Database = {
           recruited_by_moderator_id?: string | null
           referral_code?: string | null
           referred_by_user_id?: string | null
+          signup_promo_code?: string | null
           updated_at?: string
           user_id?: string
         }

@@ -361,11 +361,25 @@ serve(async (req) => {
     let discountAmount = 0;
     let appliedPromoCode: any = null;
 
-    if (promoCode) {
+    // Auto-detect promo code: use provided one, or fallback to user's signup promo code
+    let effectivePromoCode = promoCode;
+    if (!effectivePromoCode && restoration.user_id) {
+      const { data: userProfile } = await supabase
+        .from("profiles")
+        .select("signup_promo_code")
+        .eq("user_id", restoration.user_id)
+        .single();
+      if (userProfile?.signup_promo_code) {
+        effectivePromoCode = userProfile.signup_promo_code;
+        console.log("Auto-applying signup promo code:", effectivePromoCode);
+      }
+    }
+
+    if (effectivePromoCode) {
       const { data: promo, error: promoError } = await supabase
         .from("promo_codes")
         .select("*")
-        .eq("code", promoCode.toUpperCase())
+        .eq("code", effectivePromoCode.toUpperCase())
         .eq("is_active", true)
         .single();
 
