@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
 import {
   Table,
   TableBody,
@@ -57,7 +58,17 @@ export function AdminPhotosTable({
   });
   const [previewLoading, setPreviewLoading] = useState(false);
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
+  const [regenProgress, setRegenProgress] = useState(0);
+  const [regenStatus, setRegenStatus] = useState<string>("");
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { toast } = useToast();
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, []);
 
   const filteredPhotos = photos.filter((photo) => {
     const search = searchTerm.toLowerCase();
@@ -125,6 +136,91 @@ export function AdminPhotosTable({
     setPreviewUrls({ before: null, after: null });
   };
 
+  const startPolling = (photoId: string) => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    
+    let elapsed = 0;
+    const maxTime = 300; // 5 min max
+    
+    setRegenProgress(10);
+    setRegenStatus("Envoi de la requête...");
+
+    pollingRef.current = setInterval(async () => {
+      elapsed += 3;
+      
+      // Simulate progress based on elapsed time
+      const simulatedProgress = Math.min(10 + (elapsed / maxTime) * 80, 90);
+      
+      try {
+        const { data } = await supabase
+          .from("photo_restorations")
+          .select("status, preview_image_path")
+          .eq("id", photoId)
+          .single();
+
+        if (!data) return;
+
+        if (data.status === "processing") {
+          setRegenProgress(Math.max(simulatedProgress, 30));
+          setRegenStatus("Traitement par l'IA en cours...");
+        } else if (data.status === "preview_ready" || data.status === "completed") {
+          setRegenProgress(100);
+          setRegenStatus("Régénération terminée ✓");
+          if (pollingRef.current) clearInterval(pollingRef.current);
+          pollingRef.current = null;
+          
+          toast({
+            title: "Régénération terminée !",
+            description: `La photo a été régénérée avec succès.`,
+          });
+
+          // Keep success state for 2s then reset
+          setTimeout(() => {
+            setRegeneratingId(null);
+            setRegenProgress(0);
+            setRegenStatus("");
+          }, 2000);
+          return;
+        } else if (data.status === "failed") {
+          setRegenProgress(0);
+          setRegenStatus("Échec de la régénération");
+          if (pollingRef.current) clearInterval(pollingRef.current);
+          pollingRef.current = null;
+          
+          toast({
+            title: "Échec de la régénération",
+            description: "Le modèle n'a pas pu traiter l'image.",
+            variant: "destructive",
+          });
+
+          setTimeout(() => {
+            setRegeneratingId(null);
+            setRegenProgress(0);
+            setRegenStatus("");
+          }, 2000);
+          return;
+        } else {
+          setRegenProgress(Math.max(simulatedProgress, 15));
+          setRegenStatus("En attente du traitement...");
+        }
+
+        // Timeout after 5 min
+        if (elapsed >= maxTime) {
+          if (pollingRef.current) clearInterval(pollingRef.current);
+          pollingRef.current = null;
+          setRegenStatus("Délai dépassé — vérifiez manuellement");
+          setTimeout(() => {
+            setRegeneratingId(null);
+            setRegenProgress(0);
+            setRegenStatus("");
+          }, 3000);
+        }
+      } catch (err) {
+        console.error("Polling error:", err);
+      }
+    }, 3000);
+  };
+
   const handleRegenerate = async (photo: PhotoRestoration) => {
     if (!photo.original_image_path) {
       toast({ title: "Erreur", description: "Aucune image originale trouvée", variant: "destructive" });
@@ -132,6 +228,9 @@ export function AdminPhotosTable({
     }
 
     setRegeneratingId(photo.id);
+    setRegenProgress(5);
+    setRegenStatus("Lancement de la régénération...");
+
     try {
       // Reset restoration status
       await supabase
@@ -140,7 +239,7 @@ export function AdminPhotosTable({
         .eq("id", photo.id);
 
       // Call restore-photo edge function
-      const { data, error } = await supabase.functions.invoke("restore-photo", {
+      const { error } = await supabase.functions.invoke("restore-photo", {
         body: {
           restorationId: photo.id,
           trialNumber: 1,
@@ -150,19 +249,19 @@ export function AdminPhotosTable({
 
       if (error) throw error;
 
-      toast({
-        title: "Régénération lancée",
-        description: `La photo ${photo.id.slice(0, 8)} est en cours de retraitement.`,
-      });
+      // Start polling for status updates
+      startPolling(photo.id);
+
     } catch (err: any) {
       console.error("Regenerate error:", err);
+      setRegeneratingId(null);
+      setRegenProgress(0);
+      setRegenStatus("");
       toast({
         title: "Erreur de régénération",
         description: err.message || "Une erreur est survenue",
         variant: "destructive",
       });
-    } finally {
-      setRegeneratingId(null);
     }
   };
 
@@ -180,22 +279,38 @@ export function AdminPhotosTable({
       return;
     }
 
-    const { data: signedData } = await supabase.storage
-      .from("photos")
-      .createSignedUrl(imagePath, 86400); // 24h
+    try {
+      const { data: signedData, error } = await supabase.storage
+        .from("photos")
+        .createSignedUrl(imagePath, 86400); // 24h
 
-    const imageUrl = signedData?.signedUrl || "";
-    const userName = getUserName(photo.user_id);
+      if (error || !signedData?.signedUrl) {
+        toast({ title: "Erreur", description: "Impossible de générer le lien de téléchargement", variant: "destructive" });
+        return;
+      }
 
-    // Clean phone number (remove spaces, ensure format)
-    const cleanPhone = phone.replace(/\s+/g, "").replace(/^\+/, "");
+      const imageUrl = signedData.signedUrl;
+      const userName = getUserName(photo.user_id);
 
-    const message = `Bonjour ${userName} 👋\n\nMerci d'avoir choisi REVIVO pour restaurer votre photo ! 🎉\n\nVotre image restaurée en haute qualité est prête :\n${imageUrl}\n\nN'hésitez pas à partager REVIVO avec vos proches pour qu'ils puissent aussi redonner vie à leurs souvenirs ! 📸✨\n\nL'équipe REVIVO 💛`;
+      // Clean phone number (remove spaces, ensure format)
+      const cleanPhone = phone.replace(/[\s\-()]/g, "").replace(/^\+/, "");
 
-    window.open(
-      `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`,
-      "_blank"
-    );
+      const message = `Bonjour ${userName} 👋\n\nMerci d'avoir choisi REVIVO pour restaurer votre photo ! 🎉\n\nVotre image restaurée en haute qualité est prête :\n${imageUrl}\n\nN'hésitez pas à partager REVIVO avec vos proches pour qu'ils puissent aussi redonner vie à leurs souvenirs ! 📸✨\n\nL'équipe REVIVO 💛`;
+
+      // Use a link element to avoid popup blockers
+      const link = document.createElement("a");
+      link.href = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      toast({ title: "WhatsApp ouvert", description: `Message préparé pour ${userName}` });
+    } catch (err: any) {
+      console.error("WhatsApp error:", err);
+      toast({ title: "Erreur", description: err.message || "Impossible d'ouvrir WhatsApp", variant: "destructive" });
+    }
   };
 
   return (
@@ -217,6 +332,21 @@ export function AdminPhotosTable({
           </div>
         </CardHeader>
         <CardContent>
+          {/* Regeneration progress bar */}
+          {regeneratingId && (
+            <div className="mb-4 p-4 rounded-lg border border-primary/20 bg-primary/5 space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-medium text-foreground flex items-center gap-2">
+                  <RefreshCw className="h-4 w-4 animate-spin text-primary" />
+                  Régénération en cours — {regeneratingId.slice(0, 8)}...
+                </span>
+                <span className="text-muted-foreground">{Math.round(regenProgress)}%</span>
+              </div>
+              <Progress value={regenProgress} className="h-2" />
+              <p className="text-xs text-muted-foreground">{regenStatus}</p>
+            </div>
+          )}
+
           {isLoading ? (
             <div className="flex justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin" />
@@ -242,14 +372,22 @@ export function AdminPhotosTable({
                 </TableHeader>
                 <TableBody>
                   {filteredPhotos.map((photo) => (
-                    <TableRow key={photo.id}>
+                    <TableRow key={photo.id} className={regeneratingId === photo.id ? "bg-primary/5" : ""}>
                       <TableCell className="font-mono text-xs">
                         {photo.id.slice(0, 8)}...
                       </TableCell>
                       <TableCell className="max-w-[120px] truncate">
                         {getUserName(photo.user_id)}
                       </TableCell>
-                      <TableCell>{getStatusBadge(photo.status)}</TableCell>
+                      <TableCell>
+                        {regeneratingId === photo.id ? (
+                          <Badge variant="outline" className="animate-pulse">
+                            Régénération...
+                          </Badge>
+                        ) : (
+                          getStatusBadge(photo.status)
+                        )}
+                      </TableCell>
                       <TableCell>
                         {photo.is_paid ? (
                           <Badge variant="default">Oui</Badge>
@@ -292,7 +430,7 @@ export function AdminPhotosTable({
                             size="icon"
                             title="Régénérer"
                             onClick={() => handleRegenerate(photo)}
-                            disabled={regeneratingId === photo.id || !photo.original_image_path}
+                            disabled={!!regeneratingId || !photo.original_image_path}
                           >
                             {regeneratingId === photo.id ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
@@ -409,6 +547,20 @@ export function AdminPhotosTable({
                 </div>
               </div>
 
+              {/* Regeneration progress in modal */}
+              {previewPhoto && regeneratingId === previewPhoto.id && (
+                <div className="p-3 rounded-lg border border-primary/20 bg-primary/5 space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium flex items-center gap-2">
+                      <RefreshCw className="h-3 w-3 animate-spin text-primary" />
+                      {regenStatus}
+                    </span>
+                    <span className="text-muted-foreground">{Math.round(regenProgress)}%</span>
+                  </div>
+                  <Progress value={regenProgress} className="h-2" />
+                </div>
+              )}
+
               {/* Action buttons in modal */}
               {previewPhoto && (
                 <div className="flex justify-center gap-3 pt-2">
@@ -416,7 +568,7 @@ export function AdminPhotosTable({
                     variant="outline"
                     size="sm"
                     onClick={() => handleRegenerate(previewPhoto)}
-                    disabled={regeneratingId === previewPhoto.id || !previewPhoto.original_image_path}
+                    disabled={!!regeneratingId || !previewPhoto.original_image_path}
                   >
                     {regeneratingId === previewPhoto.id ? (
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
