@@ -2,9 +2,12 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Gift, Copy, Check, Users, Sparkles, TrendingUp, MessageCircle, Facebook, Share2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Gift, Copy, Check, Users, Sparkles, TrendingUp, MessageCircle, Facebook, Share2, Pencil, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Textarea } from "@/components/ui/textarea";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface ReferralSectionProps {
   referralCode: string | null;
@@ -12,6 +15,7 @@ interface ReferralSectionProps {
   successfulReferrals: number;
   generationsEarned: number;
   generationsUsed: number;
+  onCodeUpdated?: () => void;
 }
 
 export function ReferralSection({
@@ -20,9 +24,56 @@ export function ReferralSection({
   successfulReferrals,
   generationsEarned,
   generationsUsed,
+  onCodeUpdated,
 }: ReferralSectionProps) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [copiedMessage, setCopiedMessage] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [customCode, setCustomCode] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSaveCustomCode = async () => {
+    if (!user?.id || !customCode.trim()) return;
+    const code = customCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (code.length < 4 || code.length > 15) {
+      toast({ title: "Code invalide", description: "Le code doit contenir entre 4 et 15 caractères alphanumériques.", variant: "destructive" });
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      // Check uniqueness
+      const { data: existing } = await supabase
+        .from("profiles")
+        .select("user_id")
+        .eq("referral_code", code)
+        .neq("user_id", user.id)
+        .maybeSingle();
+
+      if (existing) {
+        toast({ title: "Code déjà pris", description: "Ce code est déjà utilisé par un autre utilisateur.", variant: "destructive" });
+        setIsSaving(false);
+        return;
+      }
+
+      const { error } = await supabase
+        .from("profiles")
+        .update({ referral_code: code })
+        .eq("user_id", user.id);
+
+      if (error) throw error;
+
+      toast({ title: "Code mis à jour !", description: `Votre nouveau code est : ${code}` });
+      setIsEditing(false);
+      setCustomCode("");
+      onCodeUpdated?.();
+    } catch {
+      toast({ title: "Erreur", description: "Impossible de mettre à jour le code.", variant: "destructive" });
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const shareMessage = referralCode
     ? `🎉 J'utilise REVIVO pour restaurer mes anciennes photos et c'est incroyable ! Essaie toi aussi pour redonner vie à tes vieux souvenirs 📸✨ Inscris-toi et profite de -10% sur ta première restauration !\n\n👉 ${window.location.origin}`
@@ -70,12 +121,40 @@ export function ReferralSection({
           Partagez ce message pour inviter vos amis. Ils recevront <strong>-10% sur leur premier achat</strong> et vous gagnerez <strong>1 restauration gratuite</strong> quand ils paient !
         </p>
 
-        {/* Promo Code Badge */}
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-muted-foreground">Votre code :</span>
-          <Badge variant="secondary" className="text-lg font-mono px-4 py-2">
-            {referralCode || "..."}
-          </Badge>
+        {/* Promo Code Badge + Edit */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-medium text-muted-foreground">Votre code :</span>
+            <Badge variant="secondary" className="text-lg font-mono px-4 py-2">
+              {referralCode || "..."}
+            </Badge>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => { setIsEditing(!isEditing); setCustomCode(referralCode || ""); }}
+              className="gap-1 text-muted-foreground"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              Personnaliser
+            </Button>
+          </div>
+          {isEditing && (
+            <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg border">
+              <Input
+                value={customCode}
+                onChange={(e) => setCustomCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
+                placeholder="Ex: REVISSA, PHOTOALI..."
+                className="font-mono uppercase max-w-[200px]"
+                maxLength={15}
+              />
+              <Button onClick={handleSaveCustomCode} disabled={isSaving} size="sm">
+                {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Valider"}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setIsEditing(false)}>
+                Annuler
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Shareable message */}

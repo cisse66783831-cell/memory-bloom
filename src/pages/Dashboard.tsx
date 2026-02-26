@@ -19,7 +19,9 @@ import { AccountInfo } from "@/components/dashboard/AccountInfo";
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user, isLoading: authLoading } = useAuth();
-  const { data: profile, isLoading: profileLoading } = useProfile();
+  const profileQuery = useProfile();
+  const profile = profileQuery.data;
+  const profileLoading = profileQuery.isLoading;
   const { data: referralStats } = useReferralStats();
 
   useEffect(() => {
@@ -142,6 +144,7 @@ export default function Dashboard() {
                 successfulReferrals={referralStats?.successfulReferrals || 0}
                 generationsEarned={referralStats?.generationsEarned || 0}
                 generationsUsed={0}
+                onCodeUpdated={() => profileQuery.refetch()}
               />
             </TabsContent>
 
