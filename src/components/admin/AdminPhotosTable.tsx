@@ -265,6 +265,16 @@ export function AdminPhotosTable({
     }
   };
 
+  const openWhatsApp = (cleanPhone: string, message: string) => {
+    const link = document.createElement("a");
+    link.href = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleSendWhatsApp = async (photo: PhotoRestoration) => {
     const phone = getUserPhone?.(photo.user_id);
     if (!phone) {
@@ -272,63 +282,114 @@ export function AdminPhotosTable({
       return;
     }
 
-    // Get signed URL for the restored image
-    const imagePath = photo.restored_image_path || photo.preview_image_path;
-    if (!imagePath) {
-      toast({ title: "Aucune image", description: "Aucune image restaurée disponible", variant: "destructive" });
-      return;
-    }
+    const userName = getUserName(photo.user_id);
+    const cleanPhone = phone.replace(/[\s\-()]/g, "").replace(/^\+/, "");
+    const siteUrl = window.location.origin;
 
-    try {
-      const { data: signedData, error } = await supabase.storage
-        .from("photos")
-        .createSignedUrl(imagePath, 86400); // 24h
-
-      if (error || !signedData?.signedUrl) {
-        toast({ title: "Erreur", description: "Impossible de générer le lien de téléchargement", variant: "destructive" });
+    if (photo.is_paid) {
+      // Paid: thank you message + download link
+      const imagePath = photo.restored_image_path || photo.preview_image_path;
+      if (!imagePath) {
+        toast({ title: "Aucune image", description: "Aucune image restaurée disponible", variant: "destructive" });
         return;
       }
 
-      const imageUrl = signedData.signedUrl;
-      const userName = getUserName(photo.user_id);
+      try {
+        const { data: signedData, error } = await supabase.storage
+          .from("photos")
+          .createSignedUrl(imagePath, 86400);
 
-      // Clean phone number (remove spaces, ensure format)
-      const cleanPhone = phone.replace(/[\s\-()]/g, "").replace(/^\+/, "");
+        if (error || !signedData?.signedUrl) {
+          toast({ title: "Erreur", description: "Impossible de générer le lien", variant: "destructive" });
+          return;
+        }
 
-      const message = `Bonjour ${userName} 👋\n\nMerci d'avoir choisi REVIVO pour restaurer votre photo ! 🎉\n\nVotre image restaurée en haute qualité est prête :\n${imageUrl}\n\nN'hésitez pas à partager REVIVO avec vos proches pour qu'ils puissent aussi redonner vie à leurs souvenirs ! 📸✨\n\nL'équipe REVIVO 💛`;
+        const message = `Bonjour ${userName} 👋\n\nMoi c'est Issa, administrateur de REVIVO. Merci infiniment d'avoir fait confiance à notre service pour restaurer votre photo ! 🎉\n\nVotre image restaurée en haute qualité est prête. Connectez-vous pour la télécharger :\n👉 ${siteUrl}/auth?redirect=dashboard\n\nOu téléchargez directement ici (lien valide 24h) :\n📥 ${signedData.signedUrl}\n\nN'hésitez pas à partager REVIVO avec vos proches pour qu'ils puissent aussi redonner vie à leurs souvenirs ! 📸✨\n\nÀ très bientôt,\nIssa — Équipe REVIVO 💛`;
 
-      // Use a link element to avoid popup blockers
-      const link = document.createElement("a");
-      link.href = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+        openWhatsApp(cleanPhone, message);
+        toast({ title: "WhatsApp ouvert", description: `Message de remerciement envoyé à ${userName}` });
+      } catch (err: any) {
+        console.error("WhatsApp error:", err);
+        toast({ title: "Erreur", description: err.message || "Impossible d'ouvrir WhatsApp", variant: "destructive" });
+      }
+    } else {
+      // Unpaid: relance message
+      const message = `Bonjour ${userName} 👋\n\nMoi c'est Issa, administrateur de REVIVO. J'espère que vous allez bien !\n\nJe vous contacte car votre photo restaurée est prête et n'attend que vous ! 📸✨\n\nPour seulement 1000F CFA, débloquez votre image en haute qualité et redonnez vie à ce souvenir précieux.\n\n👉 Connectez-vous ici pour finaliser : ${siteUrl}/auth?redirect=dashboard\n\nSi vous avez des questions, n'hésitez pas à me répondre directement ici !\n\nÀ très bientôt,\nIssa — Équipe REVIVO 💛`;
 
-      toast({ title: "WhatsApp ouvert", description: `Message préparé pour ${userName}` });
-    } catch (err: any) {
-      console.error("WhatsApp error:", err);
-      toast({ title: "Erreur", description: err.message || "Impossible d'ouvrir WhatsApp", variant: "destructive" });
+      openWhatsApp(cleanPhone, message);
+      toast({ title: "WhatsApp ouvert", description: `Message de relance envoyé à ${userName}` });
     }
+  };
+
+  const handleBulkRelance = () => {
+    const unpaidPhotos = filteredPhotos.filter(
+      (p) => !p.is_paid && p.user_id && (p.preview_image_path || p.status === "preview_ready")
+    );
+
+    if (unpaidPhotos.length === 0) {
+      toast({ title: "Aucun utilisateur", description: "Aucune photo non payée à relancer", variant: "destructive" });
+      return;
+    }
+
+    // Deduplicate by user_id
+    const seenUsers = new Set<string>();
+    const uniqueUnpaid = unpaidPhotos.filter((p) => {
+      if (!p.user_id || seenUsers.has(p.user_id)) return false;
+      seenUsers.add(p.user_id);
+      return true;
+    });
+
+    // Open WhatsApp for each unique user with a small delay
+    let opened = 0;
+    uniqueUnpaid.forEach((photo, index) => {
+      setTimeout(() => {
+        const phone = getUserPhone?.(photo.user_id);
+        if (!phone) return;
+
+        const userName = getUserName(photo.user_id);
+        const cleanPhone = phone.replace(/[\s\-()]/g, "").replace(/^\+/, "");
+        const siteUrl = window.location.origin;
+
+        const message = `Bonjour ${userName} 👋\n\nMoi c'est Issa, administrateur de REVIVO. J'espère que vous allez bien !\n\nVotre photo restaurée est prête et n'attend que vous ! 📸✨\n\nPour seulement 1000F CFA, débloquez votre image en haute qualité.\n\n👉 ${siteUrl}/auth?redirect=dashboard\n\nÀ très bientôt,\nIssa — Équipe REVIVO 💛`;
+
+        openWhatsApp(cleanPhone, message);
+        opened++;
+      }, index * 1500); // 1.5s entre chaque pour éviter les blocages
+    });
+
+    toast({
+      title: "Relance en masse",
+      description: `${uniqueUnpaid.length} utilisateur(s) vont être contactés via WhatsApp`,
+    });
   };
 
   return (
     <>
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
           <CardTitle className="flex items-center gap-2">
             <Image className="h-5 w-5 text-primary" />
             Gestion des photos ({photos.length})
           </CardTitle>
-          <div className="relative w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Rechercher..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9"
-            />
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleBulkRelance}
+              className="text-orange-600 border-orange-300 hover:bg-orange-50"
+            >
+              <MessageCircle className="h-4 w-4 mr-2" />
+              Relancer tous les impayés
+            </Button>
+            <div className="relative w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Rechercher..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9"
+              />
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -438,13 +499,13 @@ export function AdminPhotosTable({
                               <RefreshCw className="h-4 w-4" />
                             )}
                           </Button>
-                          {photo.is_paid && (photo.restored_image_path || photo.preview_image_path) && (
+                          {photo.user_id && (
                             <Button
                               variant="ghost"
                               size="icon"
-                              title="Envoyer via WhatsApp"
+                              title={photo.is_paid ? "Remercier via WhatsApp" : "Relancer via WhatsApp"}
                               onClick={() => handleSendWhatsApp(photo)}
-                              className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                              className={photo.is_paid ? "text-green-600 hover:text-green-700 hover:bg-green-50" : "text-orange-500 hover:text-orange-600 hover:bg-orange-50"}
                             >
                               <MessageCircle className="h-4 w-4" />
                             </Button>
@@ -577,14 +638,14 @@ export function AdminPhotosTable({
                     )}
                     Régénérer
                   </Button>
-                  {previewPhoto.is_paid && (previewPhoto.restored_image_path || previewPhoto.preview_image_path) && (
+                  {previewPhoto.user_id && (
                     <Button
                       size="sm"
-                      className="bg-green-600 hover:bg-green-700 text-white"
+                      className={previewPhoto.is_paid ? "bg-green-600 hover:bg-green-700 text-white" : "bg-orange-500 hover:bg-orange-600 text-white"}
                       onClick={() => handleSendWhatsApp(previewPhoto)}
                     >
                       <MessageCircle className="h-4 w-4 mr-2" />
-                      Envoyer via WhatsApp
+                      {previewPhoto.is_paid ? "Remercier via WhatsApp" : "Relancer via WhatsApp"}
                     </Button>
                   )}
                 </div>
