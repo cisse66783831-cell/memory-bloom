@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { User, Mail, Lock, Phone, Heart, Loader2 } from "lucide-react";
+import { User, Mail, Lock, Phone, Heart, Loader2, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -33,6 +33,7 @@ export function SignupForm({ onSubmit, referralCode, isLoading }: SignupFormProp
     phoneNumber: "",
     password: "",
   });
+  const [promoCode, setPromoCode] = useState("");
   const [errors, setErrors] = useState<Partial<Record<keyof SignupFormData, string>>>({});
   const { toast } = useToast();
 
@@ -61,7 +62,7 @@ export function SignupForm({ onSubmit, referralCode, isLoading }: SignupFormProp
 
     const { error } = await onSubmit({
       ...formData,
-      referralCode: referralCode || undefined,
+      referralCode: referralCode || promoCode.trim() || undefined,
     });
 
     if (error) {
@@ -193,6 +194,23 @@ export function SignupForm({ onSubmit, referralCode, isLoading }: SignupFormProp
         <p className="text-xs text-muted-foreground mt-1">
           Minimum 8 caractères
         </p>
+      </div>
+
+      <div>
+        <label className="text-sm font-medium text-foreground mb-2 block">
+          Code promo <span className="text-muted-foreground font-normal">(optionnel)</span>
+        </label>
+        <div className="relative">
+          <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+          <Input
+            type="text"
+            value={promoCode}
+            onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+            placeholder="MONCODE"
+            className="pl-10 uppercase"
+            maxLength={20}
+          />
+        </div>
       </div>
 
       <Button

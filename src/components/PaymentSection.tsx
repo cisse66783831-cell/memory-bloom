@@ -370,28 +370,10 @@ export function PaymentSection({ onPayment, isLoading, paymentStatus = "idle", r
           )}
         </AnimatePresence>
 
-        {/* Promo code */}
-        <div className="mb-6">
-          {!showPromoField && !appliedCode && (
-            <button onClick={() => setShowPromoField(true)} className="text-sm text-primary hover:text-primary/80 underline underline-offset-2 transition-colors">
-              Vous avez un code promo ?
-            </button>
-          )}
-          <AnimatePresence>
-            {showPromoField && !appliedCode && (
-              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-                <div className="flex gap-2 mt-2">
-                  <Input placeholder="Entrez votre code" value={promoInput} onChange={(e) => setPromoInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleApplyPromo()} className="flex-1 uppercase bg-secondary/50 border-border/50" maxLength={20} />
-                  <Button variant="outline" onClick={handleApplyPromo} disabled={validatePromo.isPending || !promoInput.trim()} size="sm" className="border-border/50">
-                    {validatePromo.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Appliquer"}
-                  </Button>
-                </div>
-                {promoError && <p className="text-sm text-destructive mt-2">{promoError}</p>}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+        {/* Applied promo from signup */}
+        {appliedCode && (
+          <div className="mb-6" />
+        )}
 
         {/* Features */}
         <div className="space-y-3 mb-6">
