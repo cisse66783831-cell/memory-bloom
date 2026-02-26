@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
-import { Users, Check, X, Eye, Sparkles, Search, Loader2, Shield, Building2 } from "lucide-react";
+import { Users, Check, X, Eye, Sparkles, Search, Loader2, Shield, Building2, UserCheck, UserX, Gift } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { usePromoteToPartner } from "@/hooks/useAdminPartners";
@@ -52,6 +52,8 @@ interface AdminUsersTableProps {
   onRefresh: () => void;
   getUserTotalPayments: (userId: string) => number;
   getReferrerName: (userId: string | null) => string;
+  getReferralCount: (userId: string) => number;
+  getUserHasPaid: (userId: string) => boolean;
 }
 
 export function AdminUsersTable({
@@ -60,6 +62,8 @@ export function AdminUsersTable({
   onRefresh,
   getUserTotalPayments,
   getReferrerName,
+  getReferralCount,
+  getUserHasPaid,
 }: AdminUsersTableProps) {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
@@ -199,14 +203,14 @@ export function AdminUsersTable({
           ) : (
             <div className="overflow-x-auto">
               <Table>
-                <TableHeader>
+                 <TableHeader>
                   <TableRow>
                     <TableHead>Prénom</TableHead>
                     <TableHead>Nom</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Téléphone</TableHead>
-                    <TableHead>Email vérifié</TableHead>
-                    <TableHead>Code parrainage</TableHead>
+                    <TableHead>Statut</TableHead>
+                    <TableHead>Filleuls</TableHead>
                     <TableHead>Parrainé par</TableHead>
                     <TableHead>Générations</TableHead>
                     <TableHead>Paiements</TableHead>
@@ -226,18 +230,44 @@ export function AdminUsersTable({
                         {user.phone_number || "—"}
                       </TableCell>
                       <TableCell>
-                        {user.email_verified ? (
-                          <Badge className="gap-1 bg-success">
-                            <Check className="h-3 w-3" />
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="gap-1">
-                            <X className="h-3 w-3" />
-                          </Badge>
-                        )}
+                        {(() => {
+                          const hasPaid = getUserHasPaid(user.user_id);
+                          const referralCount = getReferralCount(user.user_id);
+                          return (
+                            <div className="flex flex-col gap-1">
+                              {hasPaid ? (
+                                <Badge className="bg-success gap-1 w-fit">
+                                  <UserCheck className="h-3 w-3" />
+                                  Client
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="gap-1 w-fit text-warning border-warning">
+                                  <UserX className="h-3 w-3" />
+                                  Lead
+                                </Badge>
+                              )}
+                              {referralCount > 0 && (
+                                <Badge variant="secondary" className="gap-1 w-fit">
+                                  <Gift className="h-3 w-3" />
+                                  Parrain
+                                </Badge>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </TableCell>
-                      <TableCell className="font-mono text-xs">
-                        {user.referral_code || "—"}
+                      <TableCell>
+                        {(() => {
+                          const count = getReferralCount(user.user_id);
+                          return count > 0 ? (
+                            <Badge variant="secondary" className="gap-1">
+                              <Users className="h-3 w-3" />
+                              {count}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell className="text-xs max-w-[100px] truncate">
                         {getReferrerName(user.referred_by_user_id)}

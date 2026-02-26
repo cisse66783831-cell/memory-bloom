@@ -252,6 +252,20 @@ const Admin = () => {
     [restorations, payments],
   );
 
+  const getUserHasPaid = useCallback(
+    (userId: string) => {
+      return restorations.some((r) => r.user_id === userId && r.is_paid);
+    },
+    [restorations],
+  );
+
+  const getReferralCount = useCallback(
+    (userId: string) => {
+      return users.filter((u) => u.referred_by_user_id === userId).length;
+    },
+    [users],
+  );
+
   const getReferrerName = useCallback(
     (referredByUserId: string | null) => {
       if (!referredByUserId) return "—";
@@ -374,6 +388,8 @@ const Admin = () => {
                 onRefresh={fetchData}
                 getUserTotalPayments={getUserTotalPayments}
                 getReferrerName={getReferrerName}
+                getReferralCount={getReferralCount}
+                getUserHasPaid={getUserHasPaid}
               />
             </TabsContent>
 

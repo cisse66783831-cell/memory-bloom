@@ -31,6 +31,8 @@ import {
   Loader2,
   UserPlus,
   CreditCard,
+  UserCheck,
+  UserX,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -191,7 +193,8 @@ const Moderator = () => {
                         <TableHead>Email</TableHead>
                         <TableHead>Code partenaire</TableHead>
                         <TableHead>Inscrits</TableHead>
-                        <TableHead>Paiements</TableHead>
+                        <TableHead>Payants</TableHead>
+                        <TableHead>Conversion</TableHead>
                         <TableHead>Recruté le</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -205,8 +208,27 @@ const Moderator = () => {
                           <TableCell>
                             <Badge variant="secondary">{p.partner_code || "—"}</Badge>
                           </TableCell>
-                          <TableCell className="font-bold">{p.signupsCount}</TableCell>
-                          <TableCell className="font-bold">{p.paymentsCount}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              <UserPlus className="h-3 w-3 text-muted-foreground" />
+                              <span className="font-bold">{p.signupsCount}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              {p.paymentsCount > 0 ? (
+                                <UserCheck className="h-3 w-3 text-success" />
+                              ) : (
+                                <UserX className="h-3 w-3 text-muted-foreground" />
+                              )}
+                              <span className="font-bold">{p.paymentsCount}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={p.signupsCount > 0 && p.paymentsCount > 0 ? "default" : "outline"}>
+                              {p.signupsCount > 0 ? Math.round((p.paymentsCount / p.signupsCount) * 100) : 0}%
+                            </Badge>
+                          </TableCell>
                           <TableCell className="text-xs">
                             {format(new Date(p.created_at), "dd MMM yyyy", { locale: fr })}
                           </TableCell>
