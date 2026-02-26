@@ -8,7 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { SignupForm } from "@/components/SignupForm";
-import { useLookupReferralCode } from "@/hooks/useProfile";
+
 
 export default function Auth() {
   const [searchParams] = useSearchParams();
@@ -22,7 +22,7 @@ export default function Auth() {
   const { signIn, signUp, signInWithGoogle, user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
-  const lookupReferral = useLookupReferralCode();
+  
 
   // Redirect if already logged in
   useEffect(() => {
@@ -63,15 +63,6 @@ export default function Auth() {
   }) => {
     setIsLoading(true);
 
-    // Look up referrer if referral code provided
-    let referredByUserId: string | undefined;
-    if (data.referralCode) {
-      const result = await lookupReferral.mutateAsync(data.referralCode);
-      if (result) {
-        referredByUserId = result.userId;
-      }
-    }
-
     const { error } = await signUp(
       data.email, 
       data.password, 
@@ -79,7 +70,7 @@ export default function Auth() {
         firstName: data.firstName,
         lastName: data.lastName,
         phoneNumber: data.phoneNumber,
-        referredByUserId,
+        referralCode: data.referralCode,
       }
     );
 
@@ -91,7 +82,7 @@ export default function Auth() {
 
     toast({
       title: "Compte créé !",
-      description: "Vérifiez votre email pour activer votre compte.",
+      description: "Bienvenue sur REVIVO !",
     });
     if (redirectParam === "restore") {
       navigate("/?restore=1");
