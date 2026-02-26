@@ -19,7 +19,8 @@ export function SocialShare({ imageUrl }: SocialShareProps) {
   };
 
   const shareToWhatsApp = () => {
-    const url = `https://wa.me/?text=${encodeURIComponent(shareText + " " + shareUrl)}`;
+    const text = shareText + "\n\n" + shareUrl;
+    const url = "https://api.whatsapp.com/send?text=" + encodeURIComponent(text);
     window.open(url, "_blank");
   };
 

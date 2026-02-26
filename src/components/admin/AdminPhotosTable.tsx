@@ -266,8 +266,11 @@ export function AdminPhotosTable({
   };
 
   const openWhatsApp = (cleanPhone: string, message: string) => {
+    // Use api.whatsapp.com/send for clean UTF-8 encoding
+    // encodeURIComponent handles all special chars: emojis, accents, line breaks
+    const url = "https://api.whatsapp.com/send?phone=" + cleanPhone + "&text=" + encodeURIComponent(message);
     const link = document.createElement("a");
-    link.href = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+    link.href = url;
     link.target = "_blank";
     link.rel = "noopener noreferrer";
     document.body.appendChild(link);
