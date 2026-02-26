@@ -19,8 +19,9 @@ import {
 } from "@/components/ui/dialog";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
-import { Image, Eye, RefreshCw, AlertTriangle, Search, Loader2, Check, X } from "lucide-react";
+import { Image, Eye, RefreshCw, Search, Loader2, Check, X, MessageCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 interface PhotoRestoration {
   id: string;
@@ -38,12 +39,14 @@ interface AdminPhotosTableProps {
   photos: PhotoRestoration[];
   isLoading: boolean;
   getUserName: (userId: string | null) => string;
+  getUserPhone?: (userId: string | null) => string;
 }
 
 export function AdminPhotosTable({
   photos,
   isLoading,
   getUserName,
+  getUserPhone,
 }: AdminPhotosTableProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -53,6 +56,8 @@ export function AdminPhotosTable({
     after: null,
   });
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
+  const { toast } = useToast();
 
   const filteredPhotos = photos.filter((photo) => {
     const search = searchTerm.toLowerCase();
@@ -83,7 +88,6 @@ export function AdminPhotosTable({
 
     const promises: Promise<void>[] = [];
 
-    // Signed URL for BEFORE (original_image_path)
     if (photo.original_image_path) {
       promises.push(
         supabase.storage
@@ -97,7 +101,6 @@ export function AdminPhotosTable({
       );
     }
 
-    // Signed URL for AFTER (restored > preview)
     const afterPath = photo.restored_image_path || photo.preview_image_path;
     if (afterPath) {
       promises.push(
@@ -120,6 +123,79 @@ export function AdminPhotosTable({
     setPreviewOpen(false);
     setPreviewPhoto(null);
     setPreviewUrls({ before: null, after: null });
+  };
+
+  const handleRegenerate = async (photo: PhotoRestoration) => {
+    if (!photo.original_image_path) {
+      toast({ title: "Erreur", description: "Aucune image originale trouvée", variant: "destructive" });
+      return;
+    }
+
+    setRegeneratingId(photo.id);
+    try {
+      // Reset restoration status
+      await supabase
+        .from("photo_restorations")
+        .update({ status: "pending", preview_image_path: null, restored_image_path: null })
+        .eq("id", photo.id);
+
+      // Call restore-photo edge function
+      const { data, error } = await supabase.functions.invoke("restore-photo", {
+        body: {
+          restorationId: photo.id,
+          trialNumber: 1,
+          sessionId: photo.session_id,
+        },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Régénération lancée",
+        description: `La photo ${photo.id.slice(0, 8)} est en cours de retraitement.`,
+      });
+    } catch (err: any) {
+      console.error("Regenerate error:", err);
+      toast({
+        title: "Erreur de régénération",
+        description: err.message || "Une erreur est survenue",
+        variant: "destructive",
+      });
+    } finally {
+      setRegeneratingId(null);
+    }
+  };
+
+  const handleSendWhatsApp = async (photo: PhotoRestoration) => {
+    const phone = getUserPhone?.(photo.user_id);
+    if (!phone) {
+      toast({ title: "Numéro introuvable", description: "Aucun numéro de téléphone associé à cet utilisateur", variant: "destructive" });
+      return;
+    }
+
+    // Get signed URL for the restored image
+    const imagePath = photo.restored_image_path || photo.preview_image_path;
+    if (!imagePath) {
+      toast({ title: "Aucune image", description: "Aucune image restaurée disponible", variant: "destructive" });
+      return;
+    }
+
+    const { data: signedData } = await supabase.storage
+      .from("photos")
+      .createSignedUrl(imagePath, 86400); // 24h
+
+    const imageUrl = signedData?.signedUrl || "";
+    const userName = getUserName(photo.user_id);
+
+    // Clean phone number (remove spaces, ensure format)
+    const cleanPhone = phone.replace(/\s+/g, "").replace(/^\+/, "");
+
+    const message = `Bonjour ${userName} 👋\n\nMerci d'avoir choisi REVIVO pour restaurer votre photo ! 🎉\n\nVotre image restaurée en haute qualité est prête :\n${imageUrl}\n\nN'hésitez pas à partager REVIVO avec vos proches pour qu'ils puissent aussi redonner vie à leurs souvenirs ! 📸✨\n\nL'équipe REVIVO 💛`;
+
+    window.open(
+      `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`,
+      "_blank"
+    );
   };
 
   return (
@@ -157,7 +233,7 @@ export function AdminPhotosTable({
                     <TableHead>ID</TableHead>
                     <TableHead>Utilisateur</TableHead>
                     <TableHead>Statut</TableHead>
-                    <TableHead>Gratuite</TableHead>
+                    <TableHead>Payée</TableHead>
                     <TableHead>Aperçu</TableHead>
                     <TableHead>Final</TableHead>
                     <TableHead>Créée le</TableHead>
@@ -175,14 +251,14 @@ export function AdminPhotosTable({
                       </TableCell>
                       <TableCell>{getStatusBadge(photo.status)}</TableCell>
                       <TableCell>
-                        {!photo.is_paid ? (
-                          <Badge variant="secondary">Oui</Badge>
+                        {photo.is_paid ? (
+                          <Badge variant="default">Oui</Badge>
                         ) : (
-                          <Badge variant="outline">Non</Badge>
+                          <Badge variant="secondary">Non</Badge>
                         )}
                       </TableCell>
                       <TableCell>
-                      {photo.preview_image_path ? (
+                        {photo.preview_image_path ? (
                           <Check className="h-4 w-4 text-primary" />
                         ) : (
                           <X className="h-4 w-4 text-muted-foreground" />
@@ -211,12 +287,30 @@ export function AdminPhotosTable({
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" title="Retraiter">
-                            <RefreshCw className="h-4 w-4" />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Régénérer"
+                            onClick={() => handleRegenerate(photo)}
+                            disabled={regeneratingId === photo.id || !photo.original_image_path}
+                          >
+                            {regeneratingId === photo.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <RefreshCw className="h-4 w-4" />
+                            )}
                           </Button>
-                          <Button variant="ghost" size="icon" title="Signaler">
-                            <AlertTriangle className="h-4 w-4" />
-                          </Button>
+                          {photo.is_paid && (photo.restored_image_path || photo.preview_image_path) && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Envoyer via WhatsApp"
+                              onClick={() => handleSendWhatsApp(photo)}
+                              className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                            >
+                              <MessageCircle className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -254,65 +348,95 @@ export function AdminPhotosTable({
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-4 mt-2">
-              {/* AVANT */}
-              <div className="space-y-2">
-                <p className="text-sm font-semibold text-center text-muted-foreground">AVANT (Original)</p>
-                <div className="aspect-square bg-muted rounded-lg overflow-hidden flex items-center justify-center">
-                  {previewUrls.before ? (
-                    <img
-                      src={previewUrls.before}
-                      alt="Photo originale"
-                      className="w-full h-full object-contain"
-                    />
-                  ) : (
-                    <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                      <X className="h-8 w-8" />
-                      <span className="text-xs">Aucune image originale</span>
-                    </div>
-                  )}
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4 mt-2">
+                {/* AVANT */}
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-center text-muted-foreground">AVANT (Original)</p>
+                  <div className="aspect-square bg-muted rounded-lg overflow-hidden flex items-center justify-center">
+                    {previewUrls.before ? (
+                      <img
+                        src={previewUrls.before}
+                        alt="Photo originale"
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                        <X className="h-8 w-8" />
+                        <span className="text-xs">Aucune image originale</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* APRÈS */}
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-center text-muted-foreground">
+                    APRÈS {previewPhoto && !previewPhoto.is_paid ? "(Aperçu — non payé)" : "(Restaurée HD)"}
+                  </p>
+                  <div className="aspect-square bg-muted rounded-lg overflow-hidden flex items-center justify-center relative">
+                    {previewUrls.after ? (
+                      <>
+                        <img
+                          src={previewUrls.after}
+                          alt="Photo restaurée"
+                          className="w-full h-full object-contain"
+                        />
+                        {previewPhoto && !previewPhoto.is_paid && (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none overflow-hidden">
+                            {[0, 1, 2].map((row) => (
+                              <div key={row} className="flex gap-6 my-3 -rotate-30">
+                                {[0, 1, 2].map((col) => (
+                                  <span
+                                    key={col}
+                                    className="text-2xl font-black tracking-widest text-foreground/20 whitespace-nowrap"
+                                  >
+                                    REVIVO
+                                  </span>
+                                ))}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                        <X className="h-8 w-8" />
+                        <span className="text-xs">Aucune image restaurée</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {/* APRÈS */}
-              <div className="space-y-2">
-                <p className="text-sm font-semibold text-center text-muted-foreground">
-                  APRÈS {previewPhoto && !previewPhoto.is_paid ? "(Aperçu — non payé)" : "(Restaurée HD)"}
-                </p>
-                <div className="aspect-square bg-muted rounded-lg overflow-hidden flex items-center justify-center relative">
-                  {previewUrls.after ? (
-                    <>
-                      <img
-                        src={previewUrls.after}
-                        alt="Photo restaurée"
-                        className="w-full h-full object-contain"
-                      />
-                      {/* Watermark for unpaid photos */}
-                      {previewPhoto && !previewPhoto.is_paid && (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none overflow-hidden">
-                          {[0, 1, 2].map((row) => (
-                            <div key={row} className="flex gap-6 my-3 -rotate-30">
-                              {[0, 1, 2].map((col) => (
-                                <span
-                                  key={col}
-                                  className="text-2xl font-black tracking-widest text-foreground/20 whitespace-nowrap"
-                                >
-                                  REVIVO
-                                </span>
-                              ))}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                      <X className="h-8 w-8" />
-                      <span className="text-xs">Aucune image restaurée</span>
-                    </div>
+              {/* Action buttons in modal */}
+              {previewPhoto && (
+                <div className="flex justify-center gap-3 pt-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleRegenerate(previewPhoto)}
+                    disabled={regeneratingId === previewPhoto.id || !previewPhoto.original_image_path}
+                  >
+                    {regeneratingId === previewPhoto.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                    )}
+                    Régénérer
+                  </Button>
+                  {previewPhoto.is_paid && (previewPhoto.restored_image_path || previewPhoto.preview_image_path) && (
+                    <Button
+                      size="sm"
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                      onClick={() => handleSendWhatsApp(previewPhoto)}
+                    >
+                      <MessageCircle className="h-4 w-4 mr-2" />
+                      Envoyer via WhatsApp
+                    </Button>
                   )}
                 </div>
-              </div>
+              )}
             </div>
           )}
         </DialogContent>

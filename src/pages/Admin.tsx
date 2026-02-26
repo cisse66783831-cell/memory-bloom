@@ -288,6 +288,15 @@ const Admin = () => {
     [users],
   );
 
+  const getUserPhone = useCallback(
+    (userId: string | null) => {
+      if (!userId) return "";
+      const user = users.find((u) => u.user_id === userId);
+      return user?.phone_number || "";
+    },
+    [users],
+  );
+
   const getUserForRestoration = useCallback(
     (restorationId: string) => {
       const restoration = restorations.find((r) => r.id === restorationId);
@@ -394,7 +403,7 @@ const Admin = () => {
             </TabsContent>
 
             <TabsContent value="photos">
-              <AdminPhotosTable photos={restorations} isLoading={loadingData} getUserName={getUserName} />
+              <AdminPhotosTable photos={restorations} isLoading={loadingData} getUserName={getUserName} getUserPhone={getUserPhone} />
             </TabsContent>
 
             <TabsContent value="payments">

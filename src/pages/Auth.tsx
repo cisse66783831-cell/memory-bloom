@@ -60,6 +60,7 @@ export default function Auth() {
     phoneNumber: string;
     password: string;
     referralCode?: string;
+    promoCode?: string;
   }) => {
     setIsLoading(true);
 
@@ -71,6 +72,7 @@ export default function Auth() {
         lastName: data.lastName,
         phoneNumber: data.phoneNumber,
         referralCode: data.referralCode,
+        promoCode: data.promoCode,
       }
     );
 
