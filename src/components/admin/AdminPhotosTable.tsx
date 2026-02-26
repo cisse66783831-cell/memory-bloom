@@ -307,7 +307,7 @@ export function AdminPhotosTable({
           return;
         }
 
-        const message = "Bonjour " + userName + ",\n\nMoi c'est Issa, administrateur de REVIVO. Merci d'avoir fait confiance a notre service pour restaurer votre photo !\n\nVotre image restauree en haute qualite est prete. Connectez-vous pour la telecharger :\n" + siteUrl + "/auth?redirect=dashboard\n\nOu telechargez directement ici (lien valide 24h) :\n" + signedData.signedUrl + "\n\nN'hesitez pas a partager REVIVO avec vos proches !\n\nA tres bientot,\nIssa - Equipe REVIVO";
+        const message = "Bonjour " + userName + ",\n\nMoi c'est Issa, administrateur de REVIVO. Merci d'avoir fait confiance a notre service pour restaurer votre photo !\n\nVotre image restauree en haute qualite est prete. Connectez-vous pour la telecharger :\n" + siteUrl + "/auth?redirect=dashboard\n\nN'hesitez pas a partager REVIVO avec vos proches !\n\nA tres bientot,\nIssa - Equipe REVIVO";
 
         openWhatsApp(cleanPhone, message);
         toast({ title: "WhatsApp ouvert", description: `Message de remerciement envoyé à ${userName}` });
