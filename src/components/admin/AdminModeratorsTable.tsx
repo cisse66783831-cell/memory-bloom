@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
-import { Briefcase, Users, Loader2, Eye, Check } from "lucide-react";
+import { Briefcase, Users, Loader2, Eye, Check, UserCheck, UserX } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface ModeratorProfile {
@@ -35,11 +35,20 @@ interface ModeratorProfile {
   pendingCommissions: number;
 }
 
+interface PartnerDetail {
+  user_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  partner_code: string | null;
+  filleulsCount: number;
+  paidFilleulsCount: number;
+}
+
 function useAdminModerators() {
   return useQuery({
     queryKey: ["admin-moderators"],
     queryFn: async (): Promise<ModeratorProfile[]> => {
-      // Get all users with moderator role
       const { data: roles, error: rolesError } = await supabase
         .from("user_roles")
         .select("user_id")
@@ -90,6 +99,54 @@ function useAdminModerators() {
   });
 }
 
+function useModeratorPartnerDetails(moderatorUserId: string | null) {
+  return useQuery({
+    queryKey: ["admin-moderator-partners", moderatorUserId],
+    enabled: !!moderatorUserId,
+    queryFn: async (): Promise<PartnerDetail[]> => {
+      if (!moderatorUserId) return [];
+
+      const { data: partners } = await supabase
+        .from("profiles")
+        .select("user_id, first_name, last_name, email, partner_code")
+        .eq("recruited_by_moderator_id", moderatorUserId)
+        .eq("is_partner", true);
+
+      if (!partners || partners.length === 0) return [];
+
+      const result = await Promise.all(
+        partners.map(async (partner) => {
+          // Get filleuls of this partner
+          const { data: filleuls } = await supabase
+            .from("profiles")
+            .select("user_id")
+            .eq("referred_by_user_id", partner.user_id);
+
+          const filleulIds = filleuls?.map((f) => f.user_id) || [];
+
+          let paidFilleulsCount = 0;
+          if (filleulIds.length > 0) {
+            const { count } = await supabase
+              .from("photo_restorations")
+              .select("user_id", { count: "exact", head: true })
+              .in("user_id", filleulIds)
+              .eq("is_paid", true);
+            paidFilleulsCount = count || 0;
+          }
+
+          return {
+            ...partner,
+            filleulsCount: filleulIds.length,
+            paidFilleulsCount,
+          };
+        })
+      );
+
+      return result;
+    },
+  });
+}
+
 function useAdminModeratorPayouts() {
   return useQuery({
     queryKey: ["admin-moderator-payouts"],
@@ -111,6 +168,7 @@ export function AdminModeratorsTable() {
   const { data: moderators = [], isLoading } = useAdminModerators();
   const { data: payouts = [] } = useAdminModeratorPayouts();
   const [selectedModerator, setSelectedModerator] = useState<string | null>(null);
+  const { data: partnerDetails = [], isLoading: partnersDetailsLoading } = useModeratorPartnerDetails(selectedModerator);
 
   const approvePayoutMutation = useMutation({
     mutationFn: async (payoutId: string) => {
@@ -271,20 +329,62 @@ export function AdminModeratorsTable() {
 
       {/* Detail dialog */}
       <Dialog open={!!selectedModerator} onOpenChange={() => setSelectedModerator(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               Détails : {selectedModeratorData?.first_name} {selectedModeratorData?.last_name}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Partenaires recrutés : <strong>{selectedModeratorData?.partnersCount}</strong>
-            </p>
-            <p className="text-sm text-muted-foreground">
-              Commissions totales :{" "}
-              <strong>{selectedModeratorData?.totalCommissions.toLocaleString("fr-FR")} F</strong>
-            </p>
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-3 bg-muted rounded-lg text-center">
+                <p className="text-xs text-muted-foreground">Partenaires</p>
+                <p className="text-xl font-bold">{selectedModeratorData?.partnersCount}</p>
+              </div>
+              <div className="p-3 bg-muted rounded-lg text-center">
+                <p className="text-xs text-muted-foreground">Commissions</p>
+                <p className="text-xl font-bold">{selectedModeratorData?.totalCommissions.toLocaleString("fr-FR")} F</p>
+              </div>
+            </div>
+
+            {/* Partners with filleul details */}
+            <div>
+              <h4 className="font-medium text-sm mb-3">Partenaires & Filleuls</h4>
+              {partnersDetailsLoading ? (
+                <div className="flex justify-center py-4"><Loader2 className="h-5 w-5 animate-spin" /></div>
+              ) : partnerDetails.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Aucun partenaire recruté</p>
+              ) : (
+                <div className="space-y-3">
+                  {partnerDetails.map((partner) => (
+                    <div key={partner.user_id} className="p-3 border rounded-lg">
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <p className="font-medium text-sm">{partner.first_name} {partner.last_name}</p>
+                          <p className="text-xs text-muted-foreground">{partner.email}</p>
+                        </div>
+                        <Badge variant="secondary" className="font-mono text-xs">{partner.partner_code}</Badge>
+                      </div>
+                      <div className="flex gap-3 text-xs">
+                        <div className="flex items-center gap-1">
+                          <Users className="h-3 w-3 text-muted-foreground" />
+                          <span>{partner.filleulsCount} filleul{partner.filleulsCount > 1 ? 's' : ''}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {partner.paidFilleulsCount > 0 ? (
+                            <UserCheck className="h-3 w-3 text-success" />
+                          ) : (
+                            <UserX className="h-3 w-3 text-muted-foreground" />
+                          )}
+                          <span>{partner.paidFilleulsCount} payant{partner.paidFilleulsCount > 1 ? 's' : ''}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {selectedPayouts.length > 0 && (
               <>
                 <h4 className="font-medium text-sm">Versements</h4>
