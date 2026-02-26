@@ -10,7 +10,7 @@ interface SocialShareProps {
 export function SocialShare({ imageUrl }: SocialShareProps) {
   const { toast } = useToast();
 
-  const shareText = "Je viens de restaurer une photo ancienne avec MemoryRestore ! Découvrez le résultat 📸";
+  const shareText = "Je viens de restaurer une photo ancienne avec REVIVO ! Decouvrez le resultat";
   const shareUrl = window.location.href;
 
   const shareToFacebook = () => {
