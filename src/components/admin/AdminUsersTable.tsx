@@ -114,14 +114,9 @@ export function AdminUsersTable({
         await supabase.from("profiles").update({ moderator_code: modCode }).eq("user_id", promoteUserId);
         toast({ title: "Modérateur nommé", description: `Code moderateur: ${modCode}` });
       } else {
-        // Promote to partner with optional moderator link
-        await promoteToPartner.mutateAsync(promoteUserId);
-        if (selectedModeratorId) {
-          await supabase
-            .from("profiles")
-            .update({ recruited_by_moderator_id: selectedModeratorId })
-            .eq("user_id", promoteUserId);
-        }
+        // Promote to partner with optional moderator link via RPC
+        const modId = selectedModeratorId && selectedModeratorId !== "none" ? selectedModeratorId : undefined;
+        await promoteToPartner.mutateAsync({ userId: promoteUserId, moderatorId: modId });
         toast({ title: "Partenaire nommé", description: "L'utilisateur est maintenant partenaire." });
       }
       setPromotingRole(null);

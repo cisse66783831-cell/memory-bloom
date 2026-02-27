@@ -778,6 +778,10 @@ export type Database = {
       lookup_moderator_code: { Args: { code: string }; Returns: string }
       lookup_partner_code: { Args: { code: string }; Returns: string }
       lookup_referral_code: { Args: { code: string }; Returns: string }
+      promote_to_partner: {
+        Args: { moderator_id?: string; target_user_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       app_role: "admin" | "moderator" | "user"

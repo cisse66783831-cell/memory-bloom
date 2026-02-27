@@ -62,28 +62,9 @@ export function usePromoteToPartner() {
 
   return useMutation({
     mutationFn: async (userId: string) => {
-      // Generate partner code
-      let partnerCode: string;
-      let exists = true;
-      do {
-        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-        partnerCode = 'PARTNER';
-        for (let i = 0; i < 4; i++) {
-          partnerCode += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-        const { data } = await supabase
-          .from("profiles")
-          .select("id")
-          .eq("partner_code", partnerCode)
-          .maybeSingle();
-        exists = !!data;
-      } while (exists);
-
-      const { error } = await supabase
-        .from("profiles")
-        .update({ is_partner: true, partner_code: partnerCode })
-        .eq("user_id", userId);
-
+      const { error } = await supabase.rpc("promote_to_partner", {
+        target_user_id: userId,
+      });
       if (error) throw error;
     },
     onSuccess: () => {

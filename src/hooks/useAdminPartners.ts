@@ -90,18 +90,11 @@ export function usePromoteToPartner() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (userId: string) => {
-      // Generate partner code
-      const partnerCode = `PARTNER${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-
-      const { error } = await supabase
-        .from("profiles")
-        .update({
-          is_partner: true,
-          partner_code: partnerCode,
-        })
-        .eq("user_id", userId);
-
+    mutationFn: async ({ userId, moderatorId }: { userId: string; moderatorId?: string }) => {
+      const { error } = await supabase.rpc("promote_to_partner", {
+        target_user_id: userId,
+        moderator_id: moderatorId || null,
+      });
       if (error) throw error;
     },
     onSuccess: () => {
