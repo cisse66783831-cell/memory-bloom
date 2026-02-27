@@ -58,13 +58,16 @@ function IndexContent() {
   const [localRating, setLocalRating] = useState<number>(0);
   const [searchParams] = useSearchParams();
 
-  // Capture ?mod= parameter and store in sessionStorage
+  // Capture ?mod= parameter and redirect to auth if not logged in
   useEffect(() => {
     const modCode = searchParams.get("mod");
     if (modCode) {
       sessionStorage.setItem("moderator_code", modCode);
+      if (!user) {
+        navigate(`/auth?mod=${modCode}`, { replace: true });
+      }
     }
-  }, [searchParams]);
+  }, [searchParams, user, navigate]);
 
   // Auto-show uploader when coming from dashboard with ?restore=1
   useEffect(() => {
