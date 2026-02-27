@@ -99,7 +99,20 @@ export function AdminUsersTable({
           role: "moderator" as const,
         });
         if (error) throw error;
-        toast({ title: "Modérateur nommé", description: "L'utilisateur est maintenant modérateur." });
+        // Generate moderator_code
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        let modCode: string;
+        let codeExists = true;
+        do {
+          modCode = 'MOD';
+          for (let i = 0; i < 6; i++) {
+            modCode += chars.charAt(Math.floor(Math.random() * chars.length));
+          }
+          const { data } = await supabase.from("profiles").select("id").eq("moderator_code", modCode).maybeSingle();
+          codeExists = !!data;
+        } while (codeExists);
+        await supabase.from("profiles").update({ moderator_code: modCode }).eq("user_id", promoteUserId);
+        toast({ title: "Modérateur nommé", description: `Code moderateur: ${modCode}` });
       } else {
         // Promote to partner with optional moderator link
         await promoteToPartner.mutateAsync(promoteUserId);

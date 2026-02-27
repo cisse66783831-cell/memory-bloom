@@ -61,7 +61,7 @@ function useAdminModerators() {
 
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
-        .select("user_id, first_name, last_name, email, created_at")
+        .select("user_id, first_name, last_name, email, moderator_code, created_at")
         .in("user_id", moderatorIds);
 
       if (profilesError) throw profilesError;
@@ -223,6 +223,7 @@ export function AdminModeratorsTable() {
                 <TableRow>
                   <TableHead>Nom</TableHead>
                   <TableHead>Email</TableHead>
+                  <TableHead>Code</TableHead>
                   <TableHead>Partenaires</TableHead>
                   <TableHead>Commissions totales</TableHead>
                   <TableHead>En attente</TableHead>
@@ -236,6 +237,9 @@ export function AdminModeratorsTable() {
                       {mod.first_name || ""} {mod.last_name || ""}
                     </TableCell>
                     <TableCell className="text-xs font-mono">{mod.email || "—"}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="font-mono text-xs">{(mod as any).moderator_code || "—"}</Badge>
+                    </TableCell>
                     <TableCell>
                       <Badge variant="secondary">{mod.partnersCount}</Badge>
                     </TableCell>

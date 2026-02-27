@@ -20,12 +20,13 @@ const signupSchema = z.object({
 type SignupFormData = z.infer<typeof signupSchema>;
 
 interface SignupFormProps {
-  onSubmit: (data: SignupFormData & { referralCode?: string; promoCode?: string }) => Promise<{ error: Error | null }>;
+  onSubmit: (data: SignupFormData & { referralCode?: string; promoCode?: string; moderatorCode?: string }) => Promise<{ error: Error | null }>;
   referralCode?: string | null;
+  moderatorCode?: string | null;
   isLoading: boolean;
 }
 
-export function SignupForm({ onSubmit, referralCode, isLoading }: SignupFormProps) {
+export function SignupForm({ onSubmit, referralCode, moderatorCode, isLoading }: SignupFormProps) {
   const [formData, setFormData] = useState<SignupFormData>({
     firstName: "",
     lastName: "",
@@ -64,6 +65,7 @@ export function SignupForm({ onSubmit, referralCode, isLoading }: SignupFormProp
       ...formData,
       referralCode: referralCode || undefined,
       promoCode: promoCode.trim() || undefined,
+      moderatorCode: moderatorCode || undefined,
     });
 
     if (error) {

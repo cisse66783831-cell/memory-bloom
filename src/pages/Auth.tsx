@@ -14,7 +14,8 @@ export default function Auth() {
   const [searchParams] = useSearchParams();
   const redirectParam = searchParams.get("redirect");
   const referralCode = searchParams.get("ref");
-  const [isLogin, setIsLogin] = useState(redirectParam !== "restore" && !referralCode);
+  const moderatorCode = searchParams.get("mod") || sessionStorage.getItem("moderator_code");
+  const [isLogin, setIsLogin] = useState(redirectParam !== "restore" && !referralCode && !moderatorCode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -61,6 +62,7 @@ export default function Auth() {
     password: string;
     referralCode?: string;
     promoCode?: string;
+    moderatorCode?: string;
   }) => {
     setIsLoading(true);
 
@@ -73,6 +75,7 @@ export default function Auth() {
         phoneNumber: data.phoneNumber,
         referralCode: data.referralCode,
         promoCode: data.promoCode,
+        moderatorCode: data.moderatorCode,
       }
     );
 
@@ -187,6 +190,7 @@ export default function Auth() {
               <SignupForm 
                 onSubmit={handleSignup}
                 referralCode={referralCode}
+                moderatorCode={moderatorCode}
                 isLoading={isLoading}
               />
             )}

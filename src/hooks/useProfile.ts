@@ -16,6 +16,7 @@ export interface Profile {
   free_generations_balance: number;
   avatar_url: string | null;
   display_name: string | null;
+  moderator_code: string | null;
   created_at: string;
   updated_at: string;
 }

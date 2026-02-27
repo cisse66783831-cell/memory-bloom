@@ -9,35 +9,31 @@ export function useModeratorPartners() {
     queryKey: ["moderator-partners", user?.id],
     enabled: !!user,
     queryFn: async () => {
-      // Get partners recruited by this moderator
-      const { data: partners, error } = await supabase
+      // Get ALL users recruited by this moderator (not just partners)
+      const { data: recruits, error } = await supabase
         .from("profiles")
-        .select("user_id, first_name, last_name, email, partner_code, created_at")
-        .eq("recruited_by_moderator_id", user!.id)
-        .eq("is_partner", true);
+        .select("user_id, first_name, last_name, email, partner_code, is_partner, created_at")
+        .eq("recruited_by_moderator_id", user!.id);
 
       if (error) throw error;
 
-      // For each partner, get referral signups count and payment count (NOT amounts)
-      const partnersWithStats = await Promise.all(
-        (partners || []).map(async (partner) => {
-          // Count referrals made by this partner's referral code users
+      // For each recruit, get referral signups count and payment count
+      const recruitsWithStats = await Promise.all(
+        (recruits || []).map(async (recruit) => {
           const { count: signupsCount } = await supabase
             .from("profiles")
             .select("id", { count: "exact", head: true })
-            .eq("referred_by_user_id", partner.user_id);
+            .eq("referred_by_user_id", recruit.user_id);
 
-          // Count payments from referred users (not amounts)
           const { data: referredUsers } = await supabase
             .from("profiles")
             .select("user_id")
-            .eq("referred_by_user_id", partner.user_id);
+            .eq("referred_by_user_id", recruit.user_id);
 
           const referredUserIds = referredUsers?.map((u) => u.user_id) || [];
 
           let paymentsCount = 0;
           if (referredUserIds.length > 0) {
-            // Get restorations from referred users
             const { data: restorations } = await supabase
               .from("photo_restorations")
               .select("id")
@@ -48,14 +44,50 @@ export function useModeratorPartners() {
           }
 
           return {
-            ...partner,
+            ...recruit,
+            is_partner: recruit.is_partner || false,
             signupsCount: signupsCount || 0,
             paymentsCount,
           };
         })
       );
 
-      return partnersWithStats;
+      return recruitsWithStats;
+    },
+  });
+}
+
+export function usePromoteToPartner() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      // Generate partner code
+      let partnerCode: string;
+      let exists = true;
+      do {
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        partnerCode = 'PARTNER';
+        for (let i = 0; i < 4; i++) {
+          partnerCode += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        const { data } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("partner_code", partnerCode)
+          .maybeSingle();
+        exists = !!data;
+      } while (exists);
+
+      const { error } = await supabase
+        .from("profiles")
+        .update({ is_partner: true, partner_code: partnerCode })
+        .eq("user_id", userId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["moderator-partners"] });
     },
   });
 }
