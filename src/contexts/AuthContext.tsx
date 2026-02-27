@@ -8,6 +8,7 @@ interface SignUpData {
   phoneNumber: string;
   referralCode?: string;
   promoCode?: string;
+  moderatorCode?: string;
 }
 
 interface AuthContextType {
@@ -69,6 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           phone_number: data.phoneNumber,
           referral_code: data.referralCode || undefined,
           promo_code: data.promoCode || undefined,
+          moderator_code: data.moderatorCode || undefined,
         } : undefined,
       },
     });

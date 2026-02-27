@@ -57,6 +57,14 @@ function IndexContent() {
   const [localRating, setLocalRating] = useState<number>(0);
   const [searchParams] = useSearchParams();
 
+  // Capture ?mod= parameter and store in sessionStorage
+  useEffect(() => {
+    const modCode = searchParams.get("mod");
+    if (modCode) {
+      sessionStorage.setItem("moderator_code", modCode);
+    }
+  }, [searchParams]);
+
   // Auto-show uploader when coming from dashboard with ?restore=1
   useEffect(() => {
     if (searchParams.get("restore") === "1") {

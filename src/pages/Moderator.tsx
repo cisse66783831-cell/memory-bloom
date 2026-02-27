@@ -8,7 +8,9 @@ import {
   useModeratorCommissions,
   useModeratorPayouts,
   useRequestModeratorPayout,
+  usePromoteToPartner,
 } from "@/hooks/useModerator";
+import { useProfile } from "@/hooks/useProfile";
 import { Header } from "@/components/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +35,9 @@ import {
   CreditCard,
   UserCheck,
   UserX,
+  Copy,
+  Share2,
+  Link as LinkIcon,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -43,8 +48,34 @@ const Moderator = () => {
   const { data: partners = [], isLoading: partnersLoading } = useModeratorPartners();
   const { data: commissions = [] } = useModeratorCommissions();
   const { data: payouts = [] } = useModeratorPayouts();
+  const { data: profile } = useProfile();
   const requestPayout = useRequestModeratorPayout();
+  const promoteToPartner = usePromoteToPartner();
   const { toast } = useToast();
+
+  const moderatorCode = profile?.moderator_code;
+  const inviteLink = moderatorCode ? `https://revivo.lovable.app/?mod=${moderatorCode}` : "";
+
+  const handleCopyLink = async () => {
+    if (!inviteLink) return;
+    await navigator.clipboard.writeText(inviteLink);
+    toast({ title: "Lien copie", description: "Le lien d'invitation a ete copie." });
+  };
+
+  const handleShareWhatsApp = () => {
+    if (!inviteLink) return;
+    const message = "Rejoins REVIVO pour restaurer des photos anciennes et gagner des commissions sur chaque inscription ! Inscris-toi ici : " + inviteLink;
+    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank");
+  };
+
+  const handlePromoteToPartner = async (userId: string) => {
+    try {
+      await promoteToPartner.mutateAsync(userId);
+      toast({ title: "Partenaire nomme", description: "L'utilisateur est maintenant partenaire." });
+    } catch {
+      toast({ title: "Erreur", description: "Impossible de promouvoir en partenaire.", variant: "destructive" });
+    }
+  };
 
   useEffect(() => {
     if (!authLoading && !user) navigate("/auth");
@@ -104,6 +135,39 @@ const Moderator = () => {
               <p className="text-muted-foreground">Gérez vos partenaires et commissions</p>
             </div>
           </div>
+
+          {/* Invitation Link Card */}
+          {moderatorCode && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <LinkIcon className="h-5 w-5 text-primary" />
+                  Lien d'invitation
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Votre code moderateur</p>
+                  <Badge variant="secondary" className="text-lg font-mono px-3 py-1">{moderatorCode}</Badge>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground mb-2">Partagez ce lien pour recruter</p>
+                  <div className="flex gap-2">
+                    <code className="flex-1 px-3 py-2 bg-muted rounded-lg text-xs font-mono truncate flex items-center">
+                      {inviteLink}
+                    </code>
+                    <Button variant="outline" size="icon" onClick={handleCopyLink} title="Copier le lien">
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                <Button onClick={handleShareWhatsApp} className="w-full gap-2" variant="outline">
+                  <Share2 className="h-4 w-4" />
+                  Partager via WhatsApp
+                </Button>
+              </CardContent>
+            </Card>
+          )}
 
           {/* KPI Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -167,12 +231,12 @@ const Moderator = () => {
             </CardHeader>
           </Card>
 
-          {/* Partners table */}
+          {/* Recruits table */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Users className="h-5 w-5 text-primary" />
-                Mes partenaires ({partners.length})
+                Mes recrues ({partners.length})
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -181,8 +245,8 @@ const Moderator = () => {
                   <Loader2 className="h-6 w-6 animate-spin" />
                 </div>
               ) : partners.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">
-                  Aucun partenaire recruté pour le moment.
+              <p className="text-center text-muted-foreground py-8">
+                  Aucune recrue pour le moment. Partagez votre lien d'invitation !
                 </p>
               ) : (
                 <div className="overflow-x-auto">
@@ -191,11 +255,13 @@ const Moderator = () => {
                       <TableRow>
                         <TableHead>Nom</TableHead>
                         <TableHead>Email</TableHead>
+                        <TableHead>Statut</TableHead>
                         <TableHead>Code partenaire</TableHead>
                         <TableHead>Inscrits</TableHead>
                         <TableHead>Payants</TableHead>
                         <TableHead>Conversion</TableHead>
-                        <TableHead>Recruté le</TableHead>
+                        <TableHead>Recrute le</TableHead>
+                        <TableHead>Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -205,6 +271,13 @@ const Moderator = () => {
                             {p.first_name || ""} {p.last_name || ""}
                           </TableCell>
                           <TableCell className="text-xs font-mono">{p.email || "—"}</TableCell>
+                          <TableCell>
+                            {p.is_partner ? (
+                              <Badge className="bg-success">Partenaire</Badge>
+                            ) : (
+                              <Badge variant="outline">Inscrit</Badge>
+                            )}
+                          </TableCell>
                           <TableCell>
                             <Badge variant="secondary">{p.partner_code || "—"}</Badge>
                           </TableCell>
@@ -231,6 +304,18 @@ const Moderator = () => {
                           </TableCell>
                           <TableCell className="text-xs">
                             {format(new Date(p.created_at), "dd MMM yyyy", { locale: fr })}
+                          </TableCell>
+                          <TableCell>
+                            {!p.is_partner && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handlePromoteToPartner(p.user_id)}
+                                disabled={promoteToPartner.isPending}
+                              >
+                                Nommer partenaire
+                              </Button>
+                            )}
                           </TableCell>
                         </TableRow>
                       ))}

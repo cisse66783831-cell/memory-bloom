@@ -422,6 +422,7 @@ export type Database = {
           id: string
           is_partner: boolean | null
           last_name: string | null
+          moderator_code: string | null
           partner_code: string | null
           partner_commission_balance: number | null
           phone_number: string | null
@@ -444,6 +445,7 @@ export type Database = {
           id?: string
           is_partner?: boolean | null
           last_name?: string | null
+          moderator_code?: string | null
           partner_code?: string | null
           partner_commission_balance?: number | null
           phone_number?: string | null
@@ -466,6 +468,7 @@ export type Database = {
           id?: string
           is_partner?: boolean | null
           last_name?: string | null
+          moderator_code?: string | null
           partner_code?: string | null
           partner_commission_balance?: number | null
           phone_number?: string | null
@@ -758,6 +761,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      generate_moderator_code: { Args: never; Returns: string }
       generate_partner_code: { Args: never; Returns: string }
       generate_referral_code: { Args: never; Returns: string }
       get_monthly_referral_reward_count: {
@@ -771,6 +775,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      lookup_moderator_code: { Args: { code: string }; Returns: string }
       lookup_partner_code: { Args: { code: string }; Returns: string }
       lookup_referral_code: { Args: { code: string }; Returns: string }
     }
