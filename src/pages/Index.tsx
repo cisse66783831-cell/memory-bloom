@@ -41,6 +41,7 @@ const stagger = {
   viewport: { once: true },
 };
 
+/* IndexContent component */
 function IndexContent() {
   const {
     step, progress, originalImageUrl, previewImageUrl, restoredImageUrl,
