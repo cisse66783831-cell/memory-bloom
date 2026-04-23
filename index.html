@@ -3,19 +3,185 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Preconnect pour les domaines critiques -->
+    <link rel="preconnect" href="https://rvbhanhlevsxkpqygbmy.supabase.co" crossorigin />
+    <link rel="dns-prefetch" href="https://connect.facebook.net" />
+    <link rel="dns-prefetch" href="https://www.ikeepay.com" />
+
+    <!-- Icônes -->
     <link rel="icon" href="/logo-revivo.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/logo-revivo.png" />
+
+    <!-- Thème -->
+    <meta name="theme-color" content="#c9a84c" />
+
     <title>REVIVO - Redonnez vie à vos anciennes photos</title>
-    <meta name="description" content="REVIVO restaure vos photos de famille anciennes et abîmées. Voyez le résultat avant de payer. Simple, chaleureux, fait pour vos souvenirs." />
+    <meta
+      name="description"
+      content="REVIVO restaure vos photos de famille anciennes et abîmées grâce à l'IA. Voyez le résultat avant de payer. Simple, rapide, fait pour vos souvenirs."
+    />
     <meta name="author" content="REVIVO" />
+    <meta name="robots" content="index, follow" />
+    <meta
+      name="keywords"
+      content="restauration photo, restaurer photos anciennes, retouche photo IA, réparer photo abîmée, vieille photo, photo de famille, colorisation photo"
+    />
 
+    <link rel="canonical" href="https://revivo.ngahama.com/" />
+
+    <!-- Open Graph -->
     <meta property="og:title" content="REVIVO - Redonnez vie à vos anciennes photos" />
-    <meta property="og:description" content="Restaurez vos photos de famille anciennes et abîmées. Voyez le résultat avant de payer." />
+    <meta
+      property="og:description"
+      content="Restaurez vos photos de famille anciennes et abîmées grâce à l'IA. Voyez le résultat avant de payer."
+    />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
+    <meta property="og:url" content="https://revivo.ngahama.com/" />
+    <meta property="og:locale" content="fr_FR" />
+    <meta property="og:site_name" content="REVIVO" />
+    <meta property="og:image" content="https://revivo.ngahama.com/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="REVIVO — Restauration de photos anciennes par IA" />
 
+    <!-- Twitter / X -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@REVIVO" />
-    <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
+    <meta name="twitter:title" content="REVIVO - Redonnez vie à vos anciennes photos" />
+    <meta
+      name="twitter:description"
+      content="Restaurez vos photos de famille anciennes et abîmées grâce à l'IA. Voyez le résultat avant de payer."
+    />
+    <meta name="twitter:image" content="https://revivo.ngahama.com/og-image.png" />
+
+    <!-- Données structurées JSON-LD -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Organization",
+          "@id": "https://revivo.ngahama.com/#organization",
+          "name": "REVIVO",
+          "url": "https://revivo.ngahama.com/",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://revivo.ngahama.com/logo-revivo.png"
+          },
+          "description": "Service de restauration de photos anciennes par intelligence artificielle.",
+          "sameAs": []
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://revivo.ngahama.com/#website",
+          "url": "https://revivo.ngahama.com/",
+          "name": "REVIVO",
+          "publisher": { "@id": "https://revivo.ngahama.com/#organization" },
+          "inLanguage": "fr-FR"
+        },
+        {
+          "@type": "Service",
+          "name": "Restauration de photos anciennes par IA",
+          "provider": { "@id": "https://revivo.ngahama.com/#organization" },
+          "description": "Restauration automatique de photos de famille anciennes, abîmées ou jaunies grâce à l'intelligence artificielle. Résultat visible avant paiement.",
+          "serviceType": "Retouche et restauration de photographies",
+          "areaServed": {
+            "@type": "Place",
+            "name": "Monde francophone"
+          },
+          "availableLanguage": "French",
+          "offers": {
+            "@type": "Offer",
+            "availability": "https://schema.org/InStock",
+            "description": "Restauration photo HD avec aperçu gratuit avant paiement."
+          }
+        },
+        {
+          "@type": "FAQPage",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "Est-ce que ma photo reste privée ?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Absolument. Vos photos sont traitées de façon sécurisée et ne sont jamais partagées. Elles sont supprimées automatiquement après 30 jours."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Quels types de photos puis-je restaurer ?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Portraits, photos de famille, paysages, photos de mariage… Même les photos très anciennes, jaunies ou abîmées peuvent être améliorées."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Combien de temps prend la restauration ?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Le traitement prend généralement entre 30 secondes et 2 minutes, selon la complexité de votre photo."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Est-ce que je peux voir le résultat avant de payer ?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Oui ! Vous voyez un aperçu basse résolution avec un comparateur avant/après. La version HD dans la résolution choisie est débloquée après paiement."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Quels formats de fichier recevrai-je ?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Vous recevez un fichier PNG haute résolution et un PDF prêt à imprimer, parfait pour encadrer."
+              }
+            }
+          ]
+        }
+      ]
+    }
+    </script>
+
+    <!-- Meta Pixel Code -->
+    <script>
+      !(function (f, b, e, v, n, t, s) {
+        if (f.fbq) return;
+        n = f.fbq = function () {
+          n.callMethod
+            ? n.callMethod.apply(n, arguments)
+            : n.queue.push(arguments);
+        };
+        if (!f._fbq) f._fbq = n;
+        n.push = n;
+        n.loaded = !0;
+        n.version = "2.0";
+        n.queue = [];
+        t = b.createElement(e);
+        t.async = !0;
+        t.src = v;
+        s = b.getElementsByTagName(e)[0];
+        s.parentNode.insertBefore(t, s);
+      })(
+        window,
+        document,
+        "script",
+        "https://connect.facebook.net/en_US/fbevents.js",
+      );
+      fbq("init", "1893396204634493");
+      fbq("track", "PageView");
+    </script>
+    <noscript
+      ><img
+        height="1"
+        width="1"
+        style="display: none"
+        src="https://www.facebook.com/tr?id=1893396204634493&ev=PageView&noscript=1"
+    /></noscript>
+    <!-- End Meta Pixel Code -->
   </head>
 
   <body>

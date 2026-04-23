@@ -17,5 +17,7 @@ export default defineConfig(({ mode }) => ({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+    // Note: TypeScript paths are inherited from tsconfig.json
+    // Vite alias ensures module resolution during bundling
   },
 }));
